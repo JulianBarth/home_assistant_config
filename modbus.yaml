@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Copyright (c) 2024, Julian Bartholomeyczik
+# All rights reserved.
+
+# Fronius Symo Gen24 Plus 6.0
+# offset 40131
+- type: tcp
+  host: 192.168.178.92 # local via modbus proxy 192.168.178.197
+  port: 502
+  name: fronius1
+  sensors:
+    - name: reading_energy_main_meter
+      slave: 200
+      scan_interval: 5
+      address: 40097
+      data_type: float32
+      unit_of_measurement: W
+    - name: reading_energy_inverter_ac_output
+      unit_of_measurement: W
+      slave: 1
+      data_type: float32
+      address: 40091
+      scan_interval: 5
+    - name: reading_energy_battery_soc_scaled
+      slave: 1
+      data_type: uint16
+      address: 40361
+      scan_interval: 5
+    - name: reading_inverter_multiple_raw
+      slave: 1
+      count: 88
+      address: 40265
+      scan_interval: 10
+      data_type: custom
+      # Registers and positions in custom structure
+      # 0  DCA_SF
+      # 1  DCV_SF
+      # 2. DCW_SF DC Energy scaling factor
+      # 3. DCWH_SF
+      # 4  1_ID
+      # 5  1_DCA
+      # 6. 1_DCV
+      # 7. 1_DCW Energy string 1
+      # 8  2_ID
+      # 9. 2_DCA
+      # 10 2_DCV
+      # 11 2_DCW Energy string 2
+      # 12 3_ID
+      # 13 3_DCA
+      # 14 3_DCV
+      # 15 3_DCW Energy to battery, charging
+      # 16 4_ID
+      # 17 4_DCA
+      # 18 4_DCV
+      # 19 4_DCW Energy from battery, discharging
+      structure: ">hhhh8x H16xHHH16x H16xHHH16x H16xHHH16x H16xHHH16x"
+    # WChaMax
+    - name: reading_max_allowed_discharge_power
+      slave: 1
+      data_type: uint16
+      address: 40355
+      scan_interval: 5
+      unit_of_measurement: W
+      unique_id: 0986479e-d88d-4722-b70c-8f0f8b84bfd2
+    # OutWRte 40366
+    - name: percent_max_discharge_rte
+      slave: 1
+      data_type: int16
+      address: 40365
+      scan_interval: 2
+      unit_of_measurement: "%"
+      unique_id: 9af951af-ad20-410b-8e3f-29c9e21702c3
+    # InWRte 40367
+    - name: percent_max_charge_rte
+      slave: 1
+      data_type: int16
+      address: 40366
+      scan_interval: 2
+      unit_of_measurement: "%"
+      unique_id: 8c5c170b-d0a5-442a-a217-67e8eb5727ea
+    - name: nameplate_id
+      slave: 1
+      data_type: uint16
+      address: 40131
+      scan_interval: 5
+      unique_id: bb1d60ed-cabd-434b-9289-ef58c2f374c4
+    # MinRsvPct
+    - name: min_soc
+      slave: 1
+      data_type: uint16
+      address: 40360
+      scan_interval: 5
+      #unit_of_measurement: "%"
+      unique_id: 0d66a60e-22ba-4ca1-b492-780602b914d0
+    - name: "Battery Control Mode (read/write)"
+      slave: 1
+      address: 40358
+      data_type: uint16
+      unique_id: 18163163-6826-4f9f-bf54-ec97d9b4548d
+      scan_interval: 5
+      input_type: holding
+    - name: ChaSt
+      slave: 1
+      address: 40364
+      scan_interval: 5
+      data_type: uint16
+      unique_id: 0fb59ea6-cfdc-4126-82d3-468fecb73dbd
+  switches:
+    - name: StorCtl_Mod
+      slave: 1
+      address: 40358
+      command_on: 3
+      command_off: 0
+      verify:
+    - name: SetHighReserve
+      slave: 1
+      address: 40360
+      command_on: 40
+      command_off: 4
+      verify:

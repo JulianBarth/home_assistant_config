@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Copyright (c) 2024, Julian Bartholomeyczik
+# All rights reserved.
+- sensor:
+    - name: "Batterie SoC"
+      unique_id: 884c1888-1880-4e98-923c-795ff9264af2
+      icon: mdi:home-battery-outline
+      unit_of_measurement: "%"
+      device_class: battery
+      state: >
+        {{ ((states('sensor.reading_energy_battery_soc_scaled') | float) * (10 ** -2 )) | round(0)}}
+- sensor:
+    - name: "Charging State"
+      unique_id: adf7fd02-94ac-4565-8392-c3b9d3b0d2dc
+      #unit_of_measurement: "State"
+      #device_class: battery
+      state: >
+        {% set mapper =  {
+              '1' : 'OFF',
+              '2' : 'EMPTY',
+              '3' : 'DISCHAGING',
+              '4' : 'CHARGING',
+              '5' : 'FULL',
+              '6' : 'HOLDING',
+              '7' : 'TESTING'} %}
+        {% set state =  states('sensor.ChaSt') %}
+        {{ mapper[state] if state in mapper else 'Unknown' }}

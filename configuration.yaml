@@ -1,0 +1,256 @@
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Copyright (c) 2024, Julian Bartholomeyczik
+# All rights reserved.
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+# Helper
+input_boolean:
+  battery_charging_active:
+    name: Battery Charging Active
+    icon: mdi:battery-charging
+  battery_no_discharging_active:
+    name: Battery No Discharging
+    icon: mdi:battery-lock
+  battery_automation_on:
+    name: Battery Charge Automation is On
+    icon: mdi:state-machine
+    initial: true
+  manual_charging_on:
+    name: Battery No Discharging
+    icon: mdi:battery-charging
+  manual_battery_charge:
+    name: Manual Battery Charge
+    initial: off
+
+input_number:
+  battery_target_soc:
+    name: Battery Target SoC
+    initial: 100
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+  manual_charge_target_soc:
+    name: Manual Charge Target SoC
+    initial: 80
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+
+  sun_threshold_low:
+    name: Expected Sun Low Threshold
+    initial: 15000
+    min: 0
+    max: 50000
+    step: 1000
+    unit_of_measurement: "Wh"
+
+  sun_threshold_very_low:
+    name: Expected Sun Very Low Threshold
+    initial: 8000
+    min: 0
+    max: 50000
+    step: 1000
+    unit_of_measurement: "Wh"
+
+  soc_target_very_low_sun:
+    name: Target SoC for Very Low Sun
+    initial: 90
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+
+  soc_target_low_sun:
+    name: Target SoC for Low Sun
+    initial: 50
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+
+  soc_target_default:
+    name: Default Target SoC
+    initial: 15
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+
+  soc_hist:
+    name: SoC Histeriesis
+    initial: 5
+    min: 0
+    max: 20
+    step: 1
+    unit_of_measurement: "%"
+sensor:
+  - platform: rest
+    name: Tibber Prices
+    resource: https://api.tibber.com/v1-beta/gql
+    method: POST
+    payload: '{ "query": "{ viewer { homes { currentSubscription { status priceInfo { current { total } today { total } tomorrow { total } } } } } }" }'
+    json_attributes_path: "$.data.viewer.homes[0].currentSubscription.priceInfo"
+    json_attributes:
+      - today
+      - tomorrow
+    value_template: "{{ value_json.data.viewer.homes[0].currentSubscription.priceInfo.current.total | float }}"
+    scan_interval: 30
+    headers:
+      Authorization: !secret tibber_api_key
+      Content-Type: application/json
+      User-Agent: REST
+    unit_of_measurement: EUR/kWh
+
+  - platform: rest
+    name: "Tibber Energy Prices"
+    resource: https://api.tibber.com/v1-beta/gql
+    method: POST
+    payload: '{ "query": "{ viewer { homes { currentSubscription { priceInfo { current { total startsAt } today { total startsAt } tomorrow { total startsAt } } } } } }" }'
+    json_attributes_path: "$.data.viewer.homes[0].currentSubscription.priceInfo"
+    json_attributes:
+      - today
+      - tomorrow
+    value_template: "{{ value_json.data.viewer.homes[0].currentSubscription.priceInfo.current.total | float }}"
+    scan_interval: 30
+    headers:
+      Authorization: !secret tibber_api_key
+      Content-Type: application/json
+      User-Agent: REST
+    unit_of_measurement: EUR/kWh
+  - platform: template
+    sensors:
+      tibber_energy_lowest_price_next_24_hours:
+        friendly_name: "Lowest Price Next 24 Hours"
+        unit_of_measurement: "Cent/kWh"
+        value_template: >
+          {% set current_time = now() %}
+          {% set end_time = current_time + timedelta(hours=24) %}
+          {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+          {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+          {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+          {% if combined_prices %}
+            {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
+            {% if future_prices | length > 0 %}
+              {{ (future_prices | map(attribute='total') | min * 100) | round(2) }}
+            {% else %}
+              unknown
+            {% endif %}
+          {% else %}
+            unknown
+          {% endif %}
+
+      tibber_energy_lowest_price_next_12_hours:
+        friendly_name: "Lowest Price Next 12 Hours"
+        unit_of_measurement: "Cent/kWh"
+        value_template: >
+          {% set current_time = now() %}
+          {% set end_time = current_time + timedelta(hours=12) %}
+          {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+          {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+          {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+          {% if combined_prices %}
+            {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
+            {% if future_prices | length > 0 %}
+              {{ (future_prices | map(attribute='total') | min * 100) | round(2) }}
+            {% else %}
+              unknown
+            {% endif %}
+          {% else %}
+            unknown
+          {% endif %}
+
+      tibber_energy_price_next_hour:
+        friendly_name: "Price Next Hour"
+        unit_of_measurement: "Cent/kWh"
+        value_template: >
+          {% set current_time = now() %}
+          {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+          {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+          {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+          {% if combined_prices %}
+            {% set next_hour_prices = combined_prices | selectattr('startsAt', '>', current_time.isoformat()) | list %}
+            {% if next_hour_prices | length > 0 %}
+              {{ (next_hour_prices[0].total * 100) | round(2) }}
+            {% else %}
+              unknown
+            {% endif %}
+          {% else %}
+            unknown
+          {% endif %}
+
+      tibber_energy_highest_price_next_24_hours:
+        friendly_name: "Highest Price Next 24 Hours"
+        unit_of_measurement: "Cent/kWh"
+        value_template: >
+          {% set current_time = now() %}
+          {% set end_time = current_time + timedelta(hours=24) %}
+          {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+          {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+          {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+          {% if combined_prices %}
+            {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
+            {% if future_prices | length > 0 %}
+              {{ (future_prices | map(attribute='total') | max * 100) | round(2) }}
+            {% else %}
+              unknown
+            {% endif %}
+          {% else %}
+            unknown
+          {% endif %}
+
+binary_sensor:
+  # binary sensor determining if the price is the lowest in the next 24 hours
+  - platform: template
+    sensors:
+      price_is_lowest:
+        friendly_name: "Price Is Lowest"
+        value_template: >
+          {% set lowest_price_24_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float %}
+          {% set current_price = (states('sensor.tibber_energy_prices') | float) * 100 %}
+          {% if lowest_price_24_hours > (current_price - 3) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
+            true
+            {% else %}
+            false
+          {% endif %}
+  # binary sensor determining if the price is lower than the price next hour sensor.tibber_energy_price_next_hour
+  - platform: template
+    sensors:
+      price_is_lower_than_next_hour:
+        friendly_name: "Price Is Lower Than Next Hour"
+        value_template: >
+          {% if  (states('sensor.tibber_energy_price_next_hour') | float > (((states('sensor.tibber_energy_prices') | float)*100)))  %}
+            true
+            {% else %}
+            false
+          {% endif %}
+  # binary sensor determining if the price is the lowest in the next 12 hours
+  - platform: template
+    sensors:
+      price_is_lowest_12_hours:
+        friendly_name: "Price Is Lowest 12 Hours"
+        value_template: >
+          {% set lowest_price_12_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float %}
+          {% set current_price = (states('sensor.tibber_energy_prices') | float) * 100 %}
+          {% if lowest_price_12_hours > (current_price - 3) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
+            true
+          {% else %}
+            false
+          {% endif %}
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+modbus: !include modbus.yaml
+template: !include templates.yaml

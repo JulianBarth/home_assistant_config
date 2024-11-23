@@ -1,0 +1,160 @@
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Copyright (c) 2024, Julian Bartholomeyczik
+# All rights reserved.
+set_regular_charge:
+  #putting things back to normale charge behavior
+  sequence:
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 10000
+      # InWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 10000
+set_limited_discharge:
+  #limited discharge, e.g. during car charging
+  sequence:
+    # OutWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 1000
+    # InWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 10000
+half_regular_charge:
+  #putting things back to 50% charge behavior
+  sequence:
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 5000
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 5000
+discharge_at_half_rate:
+  #discharghing at 50% of max power
+  sequence:
+    # OutWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 5000
+    # InWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        # int - 5000
+        value: 60536
+forced_half_recharge:
+  #charge at min of 50% full power
+  sequence:
+    # OutWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        # 50% negative out-charge
+        # int - 5000
+        value: 60536
+    # InWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        # full maximum possible charge
+        value: 10000
+forced_full_recharge:
+  #charge at min of 100% full power
+  sequence:
+    # OutWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        # 50% negative out-charge
+        # int - 8000
+        value: 57536
+    # InWRte
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        # full maximum possible charge
+        value: 10000
+
+start_battery_charging:
+  alias: "Start Battery Charging with Target SoC"
+  sequence:
+    - service: script.turn_on
+      target:
+        entity_id: script.forced_full_recharge
+    - action: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.battery_charging_active
+
+stop_battery_charging:
+  sequence:
+    - service: script.turn_on
+      target:
+        entity_id: script.set_regular_charge
+    - action: switch.turn_off
+      target:
+        entity_id: switch.StorCtl_Mod
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.battery_charging_active
+
+start_limit_discharging:
+  # set_limited_discharge
+  sequence:
+    - service: script.turn_on
+      target:
+        entity_id: script.set_limited_discharge
+    - action: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.battery_no_discharging_active
+
+stop_limit_discharging:
+  sequence:
+    - service: script.turn_on
+      target:
+        entity_id: script.set_regular_charge
+    - action: switch.turn_off
+      target:
+        entity_id: switch.StorCtl_Mod
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.battery_no_discharging_active

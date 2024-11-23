@@ -1,0 +1,17 @@
+# Ignore everything by default
+*
+
+# Do not ignore these directories
+!.gitignore
+!*.yaml
+
+# Ignore specific files and directories
+.storage/
+.cloud/
+home-assistant_v2.db
+.*.log
+*.log
+.*.db
+*.db
+secrets.yaml
+evcc.yaml
