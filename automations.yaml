@@ -52,6 +52,7 @@
           sequence:
             - service: input_number.set_value
               target:
+                # Set the target SoC based on the conditions - battery_target_soc is the resulting value
                 entity_id: input_number.battery_target_soc
               data:
                 value: >
@@ -115,7 +116,8 @@
                 {% set discharge_limited_not_active = is_state('input_boolean.battery_no_discharging_active', 'off') %}
                 {% set charging_not_active = is_state('input_boolean.battery_charging_active', 'off') %}
                 {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
-                {{ wallbox_is_charging and charging_not_active and discharge_limited_not_active and automation_on }}
+                {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
+                {{ wallbox_is_charging and charging_not_active and discharge_limited_not_active and automation_on and wallbox_not_eco }}
           sequence:
             - service: script.turn_on
               target:

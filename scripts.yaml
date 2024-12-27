@@ -27,7 +27,7 @@ set_limited_discharge:
         hub: fronius1
         unit: 1
         address: 40365
-        value: 1000
+        value: 1000 # 10% of max power as discharge current
     # InWRte
     - service: modbus.write_register
       data:
