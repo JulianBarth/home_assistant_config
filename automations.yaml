@@ -2,6 +2,7 @@
 #
 # Copyright (c) 2024, Julian Bartholomeyczik
 # All rights reserved.
+# test need to prepare for 15 minutes charging
 - alias: "Manual Battery Charging"
   trigger:
     - platform: state
