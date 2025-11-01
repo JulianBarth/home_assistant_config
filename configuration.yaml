@@ -96,7 +96,7 @@ sensor:
     name: Tibber Prices
     resource: https://api.tibber.com/v1-beta/gql
     method: POST
-    payload: '{ "query": "{ viewer { homes { currentSubscription { status priceInfo { current { total } today { total } tomorrow { total } } } } } }" }'
+    payload: '{ "query": "{ viewer { homes { currentSubscription { status priceInfo(resolution: QUARTER_HOURLY) { current { total } today { total } tomorrow { total } } } } } }" }'
     json_attributes_path: "$.data.viewer.homes[0].currentSubscription.priceInfo"
     json_attributes:
       - today
@@ -113,7 +113,7 @@ sensor:
     name: "Tibber Energy Prices"
     resource: https://api.tibber.com/v1-beta/gql
     method: POST
-    payload: '{ "query": "{ viewer { homes { currentSubscription { priceInfo { current { total startsAt } today { total startsAt } tomorrow { total startsAt } } } } } }" }'
+    payload: '{ "query": "{ viewer { homes { currentSubscription { priceInfo(resolution: QUARTER_HOURLY) { current { total startsAt } today { total startsAt } tomorrow { total startsAt } } } } } }" }'
     json_attributes_path: "$.data.viewer.homes[0].currentSubscription.priceInfo"
     json_attributes:
       - today
@@ -170,7 +170,7 @@ sensor:
           {% endif %}
 
       tibber_energy_price_next_hour:
-        friendly_name: "Price Next Hour"
+        friendly_name: "Price Next Interval"
         unit_of_measurement: "Cent/kWh"
         value_template: >
           {% set current_time = now() %}
@@ -179,9 +179,9 @@ sensor:
           {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
 
           {% if combined_prices %}
-            {% set next_hour_prices = combined_prices | selectattr('startsAt', '>', current_time.isoformat()) | list %}
-            {% if next_hour_prices | length > 0 %}
-              {{ (next_hour_prices[0].total * 100) | round(2) }}
+            {% set next_interval_prices = combined_prices | selectattr('startsAt', '>', current_time.isoformat()) | list %}
+            {% if next_interval_prices | length > 0 %}
+              {{ (next_interval_prices[0].total * 100) | round(2) }}
             {% else %}
               unknown
             {% endif %}
@@ -224,11 +224,11 @@ binary_sensor:
             {% else %}
             false
           {% endif %}
-  # binary sensor determining if the price is lower than the price next hour sensor.tibber_energy_price_next_hour
+  # binary sensor determining if the price is lower than the next interval (15 minutes)
   - platform: template
     sensors:
       price_is_lower_than_next_hour:
-        friendly_name: "Price Is Lower Than Next Hour"
+        friendly_name: "Price Is Lower Than Next Interval"
         value_template: >
           {% if  (states('sensor.tibber_energy_price_next_hour') | float > (((states('sensor.tibber_energy_prices') | float)*100)))  %}
             true
