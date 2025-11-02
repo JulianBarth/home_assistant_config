@@ -62,6 +62,8 @@ The system has undergone significant improvements:
 ## User Interface
 The system now includes a comprehensive Lovelace dashboard (`ui-lovelace.yaml`) with the following views:
 
+**For detailed UI screenshots and usage guide, see [UI_DASHBOARD_GUIDE.md](UI_DASHBOARD_GUIDE.md)**
+
 ### Overview
 - Real-time battery status and state of charge
 - Automation control switches
