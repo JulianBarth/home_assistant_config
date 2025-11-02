@@ -4,6 +4,8 @@
 # Do not ignore these directories
 !.gitignore
 !*.yaml
+!*.md
+!*.txt
 
 # Ignore specific files and directories
 .storage/
