@@ -255,7 +255,7 @@ binary_sensor:
         friendly_name: "Tibber Pulse Not Functioning"
         device_class: problem
         value_template: >
-          {{ states('sensor.tibber_rt_power') in ['unavailable', 'unknown', 'None'] }}
+          {{ states('sensor.tibber_pulse_luftehutte_stromerzeugung') in ['unavailable', 'unknown', 'None'] }}
 
 automation: !include automations.yaml
 script: !include scripts.yaml
