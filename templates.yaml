@@ -2,6 +2,8 @@
 #
 # Copyright (c) 2024, Julian Bartholomeyczik
 # All rights reserved.
+
+# Battery Status Sensors
 - sensor:
     - name: "Batterie SoC"
       unique_id: 884c1888-1880-4e98-923c-795ff9264af2
@@ -10,19 +12,115 @@
       device_class: battery
       state: >
         {{ ((states('sensor.reading_energy_battery_soc_scaled') | float) * (10 ** -2 )) | round(0)}}
-- sensor:
+    
     - name: "Charging State"
       unique_id: adf7fd02-94ac-4565-8392-c3b9d3b0d2dc
-      #unit_of_measurement: "State"
-      #device_class: battery
       state: >
         {% set mapper =  {
               '1' : 'OFF',
               '2' : 'EMPTY',
-              '3' : 'DISCHAGING',
+              '3' : 'DISCHARGING',
               '4' : 'CHARGING',
               '5' : 'FULL',
               '6' : 'HOLDING',
               '7' : 'TESTING'} %}
         {% set state =  states('sensor.ChaSt') %}
         {{ mapper[state] if state in mapper else 'Unknown' }}
+
+# Helper sensors for charging decision logic
+- sensor:
+    - name: "Battery SoC Threshold High"
+      unique_id: battery_soc_threshold_high
+      unit_of_measurement: "%"
+      state: >
+        {{ (states('input_number.soc_target_low_sun') | float) - (states('input_number.soc_hist') | float) }}
+    
+    - name: "Battery SoC Threshold Low"
+      unique_id: battery_soc_threshold_low
+      unit_of_measurement: "%"
+      state: >
+        {{ (states('input_number.soc_target_very_low_sun') | float) - (states('input_number.soc_hist') | float) }}
+    
+    - name: "Battery SoC Normalized"
+      unique_id: battery_soc_normalized
+      unit_of_measurement: "%"
+      state: >
+        {{ states('sensor.reading_energy_battery_soc_scaled') | float / 100 }}
+
+# Binary sensors for solar forecast conditions
+- binary_sensor:
+    - name: "Expected Sun Low"
+      unique_id: expected_sun_low
+      device_class: power
+      state: >
+        {{ states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float <= states('input_number.sun_threshold_low') | float }}
+    
+    - name: "Expected Sun Very Low"
+      unique_id: expected_sun_very_low
+      device_class: power
+      state: >
+        {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float <= states('input_number.sun_threshold_very_low') | float }}
+
+# Binary sensor for charging conditions
+- binary_sensor:
+    - name: "Should Start Charging"
+      unique_id: should_start_charging
+      state: >
+        {% set price_is_lowest = is_state('binary_sensor.price_is_lowest', 'on') %}
+        {% set battery_soc_threshold_high = states('sensor.battery_soc_threshold_high') | float / 100 %}
+        {% set battery_soc_threshold_low = states('sensor.battery_soc_threshold_low') | float / 100 %}
+        {% set battery_soc = states('sensor.battery_soc_normalized') | float %}
+        {% set price_is_low = is_state('binary_sensor.price_is_lowest_12_hours', 'on') %}
+        {% set price_in_bottom_25 = is_state('binary_sensor.price_is_in_bottom_25_percent', 'on') %}
+        {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
+        {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
+        {% set expected_sun_very_low = is_state('binary_sensor.expected_sun_very_low', 'on') %}
+        {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
+        
+        {# Hysteresis buffer: divide by 200 to convert % to fractional buffer (e.g., 5% → 0.025) #}
+        {% set hysteresis_buffer = states('input_number.soc_hist') | float / 200 %}
+        
+        {# Primary charging condition: lowest price + low sun forecast #}
+        {% set primary_condition = price_is_lowest and (battery_soc <= battery_soc_threshold_high) and expected_sun_low %}
+        
+        {# Secondary condition: low price in 12h window + very low sun #}
+        {% set secondary_condition = price_is_low and (battery_soc <= battery_soc_threshold_low) and expected_sun_very_low %}
+        
+        {# Opportunistic condition: price in bottom 25% and battery very low #}
+        {% set opportunistic_condition = price_in_bottom_25 and (battery_soc <= (battery_soc_threshold_low - hysteresis_buffer)) and expected_sun_low %}
+        
+        {{ (primary_condition or secondary_condition or opportunistic_condition) and automation_on and charging_inactive }}
+    
+    - name: "Should Stop Charging"
+      unique_id: should_stop_charging
+      state: >
+        {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float %}
+        {% set target_soc = states('input_number.battery_target_soc') | float * 100 %}
+        {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+        
+        {# Hysteresis: multiply by 50 to convert % to scaled SoC units (scaled SoC is in 0.01% increments) #}
+        {# Example: 5% hysteresis × 50 = 250 scaled units = 2.5% actual #}
+        {% set hysteresis = states('input_number.soc_hist') | float * 50 %}
+        
+        {# Stop charging when target is reached plus hysteresis buffer to prevent immediate restart #}
+        {{ (current_soc >= (target_soc + hysteresis)) and charging_active }}
+
+# Computed target SoC sensor
+- sensor:
+    - name: "Computed Target SoC"
+      unique_id: computed_target_soc
+      unit_of_measurement: "%"
+      state: >
+        {% set price_is_lowest = is_state('binary_sensor.price_is_lowest', 'on') %}
+        {% set price_is_low = is_state('binary_sensor.price_is_lowest_12_hours', 'on') %}
+        {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
+        {% set expected_sun_very_low = is_state('binary_sensor.expected_sun_very_low', 'on') %}
+        {% if price_is_lowest and expected_sun_very_low %}
+          {{ states('input_number.soc_target_very_low_sun') | float }}
+        {% elif price_is_lowest and expected_sun_low %}
+          {{ states('input_number.soc_target_low_sun') | float }}
+        {% elif price_is_low and expected_sun_very_low %}
+          {{ states('input_number.soc_target_low_sun') | float }}
+        {% else %}
+          {{ states('input_number.soc_target_default') | float }}
+        {% endif %}

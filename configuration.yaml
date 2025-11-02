@@ -9,6 +9,18 @@ default_config:
 frontend:
   themes: !include_dir_merge_named themes
 
+# Lovelace UI configuration
+lovelace:
+  mode: yaml
+  resources: []
+  dashboards:
+    lovelace-battery:
+      mode: yaml
+      title: Battery Management
+      icon: mdi:battery-charging
+      show_in_sidebar: true
+      filename: ui-lovelace.yaml
+
 # Helper
 input_boolean:
   battery_charging_active:
@@ -210,8 +222,52 @@ sensor:
             unknown
           {% endif %}
 
+      tibber_energy_average_price_next_12_hours:
+        friendly_name: "Average Price Next 12 Hours"
+        unit_of_measurement: "Cent/kWh"
+        value_template: >
+          {% set current_time = now() %}
+          {% set end_time = current_time + timedelta(hours=12) %}
+          {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+          {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+          {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+          {% if combined_prices %}
+            {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
+            {% if future_prices | length > 0 %}
+              {{ ((future_prices | map(attribute='total') | sum) / (future_prices | length) * 100) | round(2) }}
+            {% else %}
+              unknown
+            {% endif %}
+          {% else %}
+            unknown
+          {% endif %}
+
+      tibber_energy_price_percentile_next_12_hours:
+        friendly_name: "Current Price Percentile (Next 12h)"
+        unit_of_measurement: "%"
+        value_template: >
+          {% set current_time = now() %}
+          {% set end_time = current_time + timedelta(hours=12) %}
+          {% set current_price = states('sensor.tibber_energy_prices') | float %}
+          {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+          {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+          {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+          {% if combined_prices and current_price != 'unknown' %}
+            {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | map(attribute='total') | list %}
+            {% if future_prices | length > 0 %}
+              {% set lower_count = future_prices | select('<=', current_price) | list | length %}
+              {{ ((lower_count / future_prices | length) * 100) | round(0) }}
+            {% else %}
+              unknown
+            {% endif %}
+          {% else %}
+            unknown
+          {% endif %}
+
 binary_sensor:
-  # binary sensor determining if the price is the lowest in the next 24 hours
+  # Binary sensor determining if the price is the lowest in the next 24 hours
   - platform: template
     sensors:
       price_is_lowest:
@@ -219,38 +275,44 @@ binary_sensor:
         value_template: >
           {% set lowest_price_24_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float %}
           {% set current_price = (states('sensor.tibber_energy_prices') | float) * 100 %}
-          {% if lowest_price_24_hours > (current_price - 3) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
+          {% set price_tolerance = 3 %}
+          {% if lowest_price_24_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
             true
-            {% else %}
+          {% else %}
             false
           {% endif %}
-  # binary sensor determining if the price is lower than the next interval (15 minutes)
-  - platform: template
-    sensors:
+      
+      # Binary sensor determining if the price is lower than the next interval (15 minutes)
       price_is_lower_than_next_hour:
         friendly_name: "Price Is Lower Than Next Interval"
         value_template: >
-          {% if  (states('sensor.tibber_energy_price_next_hour') | float > (((states('sensor.tibber_energy_prices') | float)*100)))  %}
+          {% if states('sensor.tibber_energy_price_next_hour') | float > (((states('sensor.tibber_energy_prices') | float)*100)) %}
             true
-            {% else %}
+          {% else %}
             false
           {% endif %}
-  # binary sensor determining if the price is the lowest in the next 12 hours
-  - platform: template
-    sensors:
+      
+      # Binary sensor determining if the price is the lowest in the next 12 hours
       price_is_lowest_12_hours:
         friendly_name: "Price Is Lowest 12 Hours"
         value_template: >
           {% set lowest_price_12_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float %}
           {% set current_price = (states('sensor.tibber_energy_prices') | float) * 100 %}
-          {% if lowest_price_12_hours > (current_price - 3) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
+          {% set price_tolerance = 3 %}
+          {% if lowest_price_12_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
             true
           {% else %}
             false
           {% endif %}
-  # binary sensor to detect if Tibber Pulse sensor is not functioning
-  - platform: template
-    sensors:
+      
+      # Binary sensor for opportunistic charging based on price percentile
+      price_is_in_bottom_25_percent:
+        friendly_name: "Price in Bottom 25%"
+        value_template: >
+          {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
+          {{ percentile <= 25 }}
+      
+      # Binary sensor to detect if Tibber Pulse sensor is not functioning
       tibber_pulse_not_functioning:
         friendly_name: "Tibber Pulse Not Functioning"
         device_class: problem
