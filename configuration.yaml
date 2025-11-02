@@ -248,6 +248,15 @@ binary_sensor:
           {% else %}
             false
           {% endif %}
+  # binary sensor to detect if Tibber Pulse sensor is not functioning
+  - platform: template
+    sensors:
+      tibber_pulse_not_functioning:
+        friendly_name: "Tibber Pulse Not Functioning"
+        device_class: problem
+        value_template: >
+          {% set pulse_state = states('sensor.tibber_rt_power') %}
+          {{ pulse_state in ['unavailable', 'unknown', 'none'] }}
 
 automation: !include automations.yaml
 script: !include scripts.yaml
