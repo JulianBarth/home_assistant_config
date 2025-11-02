@@ -76,6 +76,8 @@
         {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
         {% set expected_sun_very_low = is_state('binary_sensor.expected_sun_very_low', 'on') %}
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
+        
+        {# Hysteresis buffer: divide by 200 to convert % to fractional buffer (e.g., 5% → 0.025) #}
         {% set hysteresis_buffer = states('input_number.soc_hist') | float / 200 %}
         
         {# Primary charging condition: lowest price + low sun forecast #}
@@ -95,9 +97,12 @@
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float %}
         {% set target_soc = states('input_number.battery_target_soc') | float * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+        
+        {# Hysteresis: multiply by 50 to convert % to scaled SoC units (scaled SoC is in 0.01% increments) #}
+        {# Example: 5% hysteresis × 50 = 250 scaled units = 2.5% actual #}
         {% set hysteresis = states('input_number.soc_hist') | float * 50 %}
         
-        {# Stop charging when target is reached plus hysteresis buffer #}
+        {# Stop charging when target is reached plus hysteresis buffer to prevent immediate restart #}
         {{ (current_soc >= (target_soc + hysteresis)) and charging_active }}
 
 # Computed target SoC sensor
