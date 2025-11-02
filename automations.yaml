@@ -197,3 +197,16 @@
       data:
         message: "Battery SoC is below 7.5%!"
         title: "Battery Alert"
+
+- alias: "Notify when Tibber Pulse is not functioning"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.tibber_pulse_not_functioning
+      to: "on"
+      for:
+        minutes: 5  # Wait 5 minutes to avoid false alarms from brief disconnections
+  action:
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        message: "Tibber Pulse sensor is not functioning. Please check the sensor battery or connectivity."
+        title: "Tibber Pulse Alert"

@@ -12,6 +12,7 @@ This project aims to automate the charging and discharging behavior of a basemen
 - **Automate Charging for Low Energy Prices**: Charging is automated to occur during times when electricity prices are low.
 - **Limit Discharging During Car Charging**: Prevent the battery from discharging when a car is being charged via the connected wallbox to maintain energy efficiency.
 - **Incorporate Solar Forecast**: The automation takes the expected solar generation into account to ensure the battery charges when solar production is anticipated to be lower.
+- **Tibber Pulse Monitoring**: Monitor the Tibber Pulse sensor health and receive notifications when the sensor is not functioning (e.g., low battery or connectivity issues).
 - **Hardware Setup**: This setup is designed for a **Fronius Gen24 6.0 Inverter**, **Wattpilot Wallbox**, and a **BYD Battery Pack**.
 
 **Note:** This project might help others, but it's very far from perfect. Many components are not structured well enough, and further documentation and refactoring are needed. The algorithm is also a work in progress.
@@ -33,10 +34,10 @@ The automations and scripts make use of the following Home Assistant integration
 - The current energy price evaluation could be optimized to more precisely determine future price trends.
 
 ## File Structure
-- **`automations.yaml`**: Contains the main automation logic for managing battery charging and discharging actions.
+- **`automations.yaml`**: Contains the main automation logic for managing battery charging and discharging actions, as well as notifications for Tibber Pulse sensor health monitoring.
 - **`modbus.yaml`**: Configuration for communication with the Fronius inverter using Modbus.
 - **`scripts.yaml`**: Defines the scripts used by the automation to start and stop charging or to limit discharging.
-- **`configuration.yaml`**: Main configuration file for Home Assistant, including input booleans, sensors, and default integrations.
+- **`configuration.yaml`**: Main configuration file for Home Assistant, including input booleans, sensors, binary sensors (including Tibber Pulse monitoring), and default integrations.
 - **`templates.yaml`**: Template sensors used for custom calculations based on inverter readings and energy prices.
 - **`LICENSE.txt`**: BSD-3-Clause license for the project.
 
