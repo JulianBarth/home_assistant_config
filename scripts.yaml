@@ -2,159 +2,197 @@
 #
 # Copyright (c) 2024, Julian Bartholomeyczik
 # All rights reserved.
+
+# =============================================================================
+# BATTERY CHARGE RATE CONTROL SCRIPTS
+# These scripts control the Fronius inverter via Modbus to set charge/discharge rates
+# Modbus registers: 40365 (OutWRte - discharge), 40366 (InWRte - charge)
+# Values are in 0.01% increments (10000 = 100%)
+# =============================================================================
+
 set_regular_charge:
-  #putting things back to normale charge behavior
+  alias: "Set Regular Charge"
+  description: "Restore normal charge/discharge behavior (100% both directions)"
   sequence:
+    # OutWRte - Set discharge rate to 100%
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
         value: 10000
-      # InWRte
+    # InWRte - Set charge rate to 100%
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40366
         value: 10000
+
 set_limited_discharge:
-  #limited discharge, e.g. during car charging
+  alias: "Set Limited Discharge"
+  description: "Limit battery discharge to 10% (used during car charging)"
   sequence:
-    # OutWRte
+    # OutWRte - Limit discharge to 10% of max power
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
-        value: 1000 # 10% of max power as discharge current
-    # InWRte
+        value: 1000
+    # InWRte - Allow full charge rate
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40366
         value: 10000
+
 half_regular_charge:
-  #putting things back to 50% charge behavior
+  alias: "Half Regular Charge"
+  description: "Set both charge and discharge to 50% of maximum"
   sequence:
+    # OutWRte - Set discharge to 50%
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
         value: 5000
+    # InWRte - Set charge to 50%
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40366
         value: 5000
+
 discharge_at_half_rate:
-  #discharghing at 50% of max power
+  alias: "Discharge at Half Rate"
+  description: "Discharge at 50% while preventing charging"
   sequence:
-    # OutWRte
+    # OutWRte - Set discharge to 50%
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
         value: 5000
-    # InWRte
+    # InWRte - Prevent charging (negative value: 65536 - 5000 = 60536)
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40366
-        # int - 5000
         value: 60536
+
 forced_half_recharge:
-  #charge at min of 50% full power
+  alias: "Forced Half Recharge"
+  description: "Force charging at minimum 50% power"
   sequence:
-    # OutWRte
+    # OutWRte - Prevent discharge (negative value: 65536 - 5000 = 60536)
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
-        # 50% negative out-charge
-        # int - 5000
         value: 60536
-    # InWRte
+    # InWRte - Allow full charge rate
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40366
-        # full maximum possible charge
         value: 10000
+
 forced_full_recharge:
-  #charge at min of 100% full power
+  alias: "Forced Full Recharge"
+  description: "Force charging at maximum power while preventing discharge"
   sequence:
-    # OutWRte
+    # OutWRte - Prevent discharge (negative value: 65536 - 8000 = 57536)
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
-        # 50% negative out-charge
-        # int - 8000
         value: 57536
-    # InWRte
+    # InWRte - Allow maximum charge rate
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40366
-        # full maximum possible charge
         value: 10000
+
+# =============================================================================
+# HIGH-LEVEL BATTERY CONTROL SCRIPTS
+# These scripts orchestrate battery charging and discharging automation
+# =============================================================================
 
 start_battery_charging:
   alias: "Start Battery Charging with Target SoC"
+  description: "Activate battery charging mode with forced full recharge"
   sequence:
+    # Configure inverter for forced full recharge
     - service: script.turn_on
       target:
         entity_id: script.forced_full_recharge
+    # Enable storage control mode
     - action: switch.turn_on
       target:
         entity_id: switch.StorCtl_Mod
+    # Set status flag
     - service: input_boolean.turn_on
       target:
         entity_id: input_boolean.battery_charging_active
 
 stop_battery_charging:
+  alias: "Stop Battery Charging"
+  description: "Deactivate battery charging and restore normal behavior"
   sequence:
+    # Restore regular charge/discharge behavior
     - service: script.turn_on
       target:
         entity_id: script.set_regular_charge
+    # Disable storage control mode
     - action: switch.turn_off
       target:
         entity_id: switch.StorCtl_Mod
+    # Clear status flag
     - service: input_boolean.turn_off
       target:
         entity_id: input_boolean.battery_charging_active
 
 start_limit_discharging:
-  # set_limited_discharge
+  alias: "Start Limit Discharging"
+  description: "Limit battery discharge (e.g., during car charging)"
   sequence:
+    # Configure inverter for limited discharge
     - service: script.turn_on
       target:
         entity_id: script.set_limited_discharge
+    # Enable storage control mode
     - action: switch.turn_on
       target:
         entity_id: switch.StorCtl_Mod
+    # Set status flag
     - service: input_boolean.turn_on
       target:
         entity_id: input_boolean.battery_no_discharging_active
 
 stop_limit_discharging:
+  alias: "Stop Limit Discharging"
+  description: "Remove discharge limitation and restore normal behavior"
   sequence:
+    # Restore regular charge/discharge behavior
     - service: script.turn_on
       target:
         entity_id: script.set_regular_charge
+    # Disable storage control mode
     - action: switch.turn_off
       target:
         entity_id: switch.StorCtl_Mod
+    # Clear status flag
     - service: input_boolean.turn_off
       target:
         entity_id: input_boolean.battery_no_discharging_active

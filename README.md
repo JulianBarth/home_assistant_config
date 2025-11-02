@@ -29,16 +29,27 @@ The automations and scripts make use of the following Home Assistant integration
 7. **Modbus Proxy**: A proxy to handle Modbus communication more efficiently is used in this setup.
 
 ## Current Issues & Areas for Improvement
-- The logic for determining when to charge or limit discharge could be improved to handle edge cases better.
-- The documentation needs more clarity and structuring to make the automation understandable and easier to maintain.
-- The current energy price evaluation could be optimized to more precisely determine future price trends.
+The system has undergone significant improvements:
+
+### Recent Improvements (2024)
+- ✅ **Code Refactoring**: Extracted repeated template logic into reusable template sensors
+- ✅ **Simplified Automations**: Reduced code duplication by using helper sensors for charging decisions
+- ✅ **Enhanced UI**: Added comprehensive Lovelace dashboard for easy monitoring and control
+- ✅ **Better Documentation**: Improved code comments and structure
+- ✅ **Algorithm Improvements**: Better separation of concerns with dedicated sensors for charging logic
+
+### Ongoing Considerations
+- The energy price evaluation could be further optimized with predictive analytics
+- Additional edge case handling for extreme weather or price scenarios
+- Integration with additional energy providers beyond Tibber
 
 ## File Structure
-- **`automations.yaml`**: Contains the main automation logic for managing battery charging and discharging actions, as well as notifications for Tibber Pulse sensor health monitoring.
+- **`automations.yaml`**: Contains the main automation logic for managing battery charging and discharging actions, as well as notifications for Tibber Pulse sensor health monitoring. Now simplified with cleaner condition checking using helper sensors.
 - **`modbus.yaml`**: Configuration for communication with the Fronius inverter using Modbus.
-- **`scripts.yaml`**: Defines the scripts used by the automation to start and stop charging or to limit discharging.
+- **`scripts.yaml`**: Defines the scripts used by the automation to start and stop charging or to limit discharging. Includes detailed comments explaining Modbus register usage.
 - **`configuration.yaml`**: Main configuration file for Home Assistant, including input booleans, sensors, binary sensors (including Tibber Pulse monitoring), and default integrations.
-- **`templates.yaml`**: Template sensors used for custom calculations based on inverter readings and energy prices.
+- **`templates.yaml`**: Template sensors used for custom calculations based on inverter readings and energy prices. Now includes helper sensors to reduce code duplication.
+- **`ui-lovelace.yaml`**: Comprehensive Lovelace dashboard for battery management with multiple views for overview, charging logic, configuration, monitoring, and advanced controls.
 - **`LICENSE.txt`**: BSD-3-Clause license for the project.
 
 ## How to Use
@@ -46,6 +57,38 @@ The automations and scripts make use of the following Home Assistant integration
 2. Update the IP addresses and any configuration details as per your network setup.
 3. Copy the configuration files into your Home Assistant setup.
 4. Modify the energy price thresholds and target SoC settings to fit your specific requirements.
+5. Access the Battery Management dashboard from the Home Assistant sidebar for monitoring and control.
+
+## User Interface
+The system now includes a comprehensive Lovelace dashboard (`ui-lovelace.yaml`) with the following views:
+
+### Overview
+- Real-time battery status and state of charge
+- Automation control switches
+- Current and forecasted energy prices
+- Visual gauge for battery level
+
+### Charging Logic
+- Charging decision indicators (should start/stop charging)
+- Solar forecast conditions
+- Computed target SoC based on conditions
+- Car charging status from Wallbox
+
+### Configuration
+- Adjustable SoC targets for different scenarios
+- Solar forecast threshold settings
+- Manual control scripts for testing and override
+
+### Monitoring
+- 24-hour history graphs for battery SoC
+- Charging state timeline
+- Price and solar forecast correlation
+- System health indicators
+
+### Advanced
+- Direct Modbus control scripts
+- All control flags and debugging information
+- System documentation and hardware details
 
 ## Getting Started
 For anyone wanting to expand or improve the project, start by focusing on:

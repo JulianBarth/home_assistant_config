@@ -1,0 +1,277 @@
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Copyright (c) 2024, Julian Bartholomeyczik
+# All rights reserved.
+
+# Battery Management Dashboard
+title: Battery Management System
+views:
+  - title: Overview
+    path: overview
+    icon: mdi:battery-charging
+    cards:
+      # Battery Status Card
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              # 🔋 Battery Management System
+              Automated battery charging and discharging control
+          
+          # Main Battery Status
+          - type: entities
+            title: Battery Status
+            entities:
+              - entity: sensor.batterie_soc
+                name: Battery State of Charge
+                icon: mdi:battery
+              - entity: sensor.charging_state
+                name: Charging State
+              - entity: input_boolean.battery_charging_active
+                name: Charging Active
+              - entity: input_boolean.battery_no_discharging_active
+                name: Discharge Limited
+              - entity: input_number.battery_target_soc
+                name: Target SoC
+          
+          # Battery Gauge
+          - type: gauge
+            entity: sensor.batterie_soc
+            name: Battery Level
+            min: 0
+            max: 100
+            severity:
+              green: 50
+              yellow: 20
+              red: 0
+            needle: true
+      
+      # Automation Control Card
+      - type: entities
+        title: Automation Control
+        entities:
+          - entity: input_boolean.battery_automation_on
+            name: Automation Enabled
+          - entity: input_boolean.manual_battery_charge
+            name: Manual Charge
+          - type: divider
+          - entity: input_number.manual_charge_target_soc
+            name: Manual Target SoC
+      
+      # Energy Price Card
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Energy Prices (Tibber)
+            entities:
+              - entity: sensor.tibber_energy_prices
+                name: Current Price
+              - entity: sensor.tibber_energy_lowest_price_next_12_hours
+                name: Lowest (12h)
+              - entity: sensor.tibber_energy_lowest_price_next_24_hours
+                name: Lowest (24h)
+              - entity: sensor.tibber_energy_highest_price_next_24_hours
+                name: Highest (24h)
+              - entity: binary_sensor.price_is_lowest
+                name: Price is Lowest
+              - entity: binary_sensor.price_is_lowest_12_hours
+                name: Price is Lowest (12h)
+          
+          # Price History Graph
+          - type: history-graph
+            title: Price History
+            hours_to_show: 24
+            entities:
+              - entity: sensor.tibber_energy_prices
+                name: Current Price
+
+  - title: Charging Logic
+    path: charging_logic
+    icon: mdi:lightning-bolt
+    cards:
+      # Charging Decision Sensors
+      - type: entities
+        title: Charging Decision Logic
+        entities:
+          - entity: binary_sensor.should_start_charging
+            name: Should Start Charging
+          - entity: binary_sensor.should_stop_charging
+            name: Should Stop Charging
+          - entity: sensor.computed_target_soc
+            name: Computed Target SoC
+          - type: divider
+          - entity: sensor.battery_soc_threshold_high
+            name: SoC Threshold (High)
+          - entity: sensor.battery_soc_threshold_low
+            name: SoC Threshold (Low)
+          - entity: sensor.battery_soc_normalized
+            name: Current SoC (Normalized)
+      
+      # Solar Forecast Card
+      - type: entities
+        title: Solar Forecast
+        entities:
+          - entity: binary_sensor.expected_sun_low
+            name: Expected Sun Low
+          - entity: binary_sensor.expected_sun_very_low
+            name: Expected Sun Very Low
+          - entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
+            name: Remaining Today
+          - entity: sensor.solcast_pv_forecast_forecast_next_x_hours
+            name: Forecast Next Hours
+      
+      # Car Charging Status
+      - type: entities
+        title: Wallbox (Car Charging)
+        entities:
+          - entity: sensor.wattpilot_carconnected
+            name: Car Status
+          - entity: select.wattpilot_charging_mode
+            name: Charging Mode
+
+  - title: Configuration
+    path: configuration
+    icon: mdi:cog
+    cards:
+      # SoC Target Settings
+      - type: entities
+        title: Target SoC Settings
+        entities:
+          - entity: input_number.soc_target_very_low_sun
+            name: Target (Very Low Sun)
+          - entity: input_number.soc_target_low_sun
+            name: Target (Low Sun)
+          - entity: input_number.soc_target_default
+            name: Target (Default)
+          - entity: input_number.soc_hist
+            name: SoC Hysteresis
+      
+      # Solar Thresholds
+      - type: entities
+        title: Solar Forecast Thresholds
+        entities:
+          - entity: input_number.sun_threshold_low
+            name: Low Sun Threshold
+          - entity: input_number.sun_threshold_very_low
+            name: Very Low Sun Threshold
+      
+      # Manual Scripts
+      - type: entities
+        title: Manual Control Scripts
+        entities:
+          - entity: script.start_battery_charging
+            name: Start Charging
+            icon: mdi:battery-charging
+          - entity: script.stop_battery_charging
+            name: Stop Charging
+            icon: mdi:battery-off
+          - entity: script.start_limit_discharging
+            name: Limit Discharge
+            icon: mdi:battery-lock
+          - entity: script.stop_limit_discharging
+            name: Stop Limit Discharge
+            icon: mdi:battery-unlock
+          - type: divider
+          - entity: script.set_regular_charge
+            name: Set Regular Charge
+          - entity: script.forced_half_recharge
+            name: Force Half Recharge
+          - entity: script.forced_full_recharge
+            name: Force Full Recharge
+
+  - title: Monitoring
+    path: monitoring
+    icon: mdi:chart-line
+    cards:
+      # Battery History
+      - type: history-graph
+        title: Battery State of Charge (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.batterie_soc
+            name: Battery SoC
+          - entity: input_number.battery_target_soc
+            name: Target SoC
+      
+      # Charging State History
+      - type: history-graph
+        title: Charging State (24h)
+        hours_to_show: 24
+        entities:
+          - entity: input_boolean.battery_charging_active
+            name: Charging Active
+          - entity: input_boolean.battery_no_discharging_active
+            name: Discharge Limited
+          - entity: binary_sensor.should_start_charging
+            name: Should Start Charging
+      
+      # Price and Solar Correlation
+      - type: history-graph
+        title: Price vs Solar Forecast (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.tibber_energy_prices
+            name: Energy Price
+          - entity: binary_sensor.expected_sun_low
+            name: Sun Low
+          - entity: binary_sensor.expected_sun_very_low
+            name: Sun Very Low
+      
+      # System Health
+      - type: entities
+        title: System Health
+        entities:
+          - entity: binary_sensor.tibber_pulse_not_functioning
+            name: Tibber Pulse Status
+          - type: section
+            label: Notifications
+          - type: markdown
+            content: |
+              **Active Alerts:**
+              - Battery charging notifications
+              - Low battery alerts (< 7.5%)
+              - Tibber Pulse connectivity issues
+
+  - title: Advanced
+    path: advanced
+    icon: mdi:tune
+    cards:
+      # Modbus Controls
+      - type: entities
+        title: Advanced Modbus Controls
+        entities:
+          - entity: script.set_limited_discharge
+            name: Set Limited Discharge
+          - entity: script.half_regular_charge
+            name: Half Regular Charge
+          - entity: script.discharge_at_half_rate
+            name: Discharge at Half Rate
+      
+      # All Input Booleans
+      - type: entities
+        title: All Control Flags
+        entities:
+          - entity: input_boolean.battery_charging_active
+          - entity: input_boolean.battery_no_discharging_active
+          - entity: input_boolean.battery_automation_on
+          - entity: input_boolean.manual_charging_on
+          - entity: input_boolean.manual_battery_charge
+      
+      # System Information
+      - type: markdown
+        title: System Information
+        content: |
+          ## Hardware Setup
+          - **Inverter:** Fronius Gen24 6.0
+          - **Battery:** BYD Battery Pack
+          - **Wallbox:** Wattpilot
+          - **Energy Monitor:** Tibber Pulse
+          
+          ## Algorithm Features
+          - Dynamic SoC targeting based on solar forecast
+          - Price-based charging optimization
+          - Car charging coordination
+          - Hysteresis to prevent charge cycling
+          
+          ## Documentation
+          See README.md for complete setup and configuration details.

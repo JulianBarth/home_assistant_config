@@ -22,61 +22,28 @@
         entity_id: script.start_battery_charging
 
 - alias: "Manage battery charging based on price and scaled charge level"
+  description: "Automated battery charging based on energy prices, solar forecast, and battery state"
   trigger:
     - platform: state
       entity_id:
-        - sensor.tibber_energy_lowest_price_next_12_hours
-        - sensor.tibber_energy_lowest_price_next_24_hours
-        - sensor.luftehutte_strompreis
-        - sensor.reading_energy_battery_soc_scaled
-        - input_boolean.battery_automation_on
+        - binary_sensor.should_start_charging
+        - binary_sensor.should_stop_charging
+        - sensor.computed_target_soc
     - platform: time_pattern
       minutes: "/5" # Check every 5 minutes as a fallback
   action:
     - choose:
-        # Start charging if conditions are met for price and battery SoC
+        # Start charging if conditions are met
         - conditions:
-            - condition: template
-              value_template: >
-                {% set price_is_lowest = is_state('binary_sensor.price_is_lowest', 'on') %}
-                {% set battery_soc_threshold_high = (states('input_number.soc_target_low_sun') | float) - (states('input_number.soc_hist') | float)  %}
-                {% set battery_soc_threshold_low = (states('input_number.soc_target_very_low_sun') | float) - (states('input_number.soc_hist') | float)  %}
-                {% set battery_soc = states('sensor.reading_energy_battery_soc_scaled') | float / 100 %}
-                {% set price_is_low = is_state('binary_sensor.price_is_lowest_12_hours', 'on')  %}
-                {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
-                {% set sun_threshold_low = states('input_number.sun_threshold_low') | float %}
-                {% set sun_threshold_very_low = states('input_number.sun_threshold_very_low') | float %}
-                {% set expected_sun_low = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float <= sun_threshold_low %}
-                {% set expected_sun_very_low = states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float <= sun_threshold_very_low %}
-                {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
-                {{ (price_is_lowest and (battery_soc <= battery_soc_threshold_high) and expected_sun_low) or (price_is_low and (battery_soc <= battery_soc_threshold_low) and expected_sun_very_low) and automation_on }}
+            - condition: state
+              entity_id: binary_sensor.should_start_charging
+              state: "on"
           sequence:
             - service: input_number.set_value
               target:
-                # Set the target SoC based on the conditions - battery_target_soc is the resulting value
                 entity_id: input_number.battery_target_soc
               data:
-                value: >
-                  {% set price_is_lowest = is_state('binary_sensor.price_is_lowest', 'on') %}
-                  {% set battery_soc_threshold_high = (states('input_number.soc_target_low_sun') | float) - (states('input_number.soc_hist') | float)  %}
-                  {% set battery_soc_threshold_low = (states('input_number.soc_target_very_low_sun') | float) - (states('input_number.soc_hist') | float)  %}
-                  {% set battery_soc = states('sensor.reading_energy_battery_soc_scaled') | float / 100 %}
-                  {% set price_is_low = is_state('binary_sensor.price_is_lowest_12_hours', 'on') %}
-                  {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
-                  {% set sun_threshold_low = states('input_number.sun_threshold_low') | float %}
-                  {% set sun_threshold_very_low = states('input_number.sun_threshold_very_low') | float %}
-                  {% set expected_sun_low = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float <= sun_threshold_low %}
-                  {% set expected_sun_very_low = states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float <= sun_threshold_very_low %}
-                  {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
-                  {% if price_is_lowest and expected_sun_very_low %}
-                    {{ states('input_number.soc_target_very_low_sun') | float }}
-                  {% elif price_is_lowest and expected_sun_low %}
-                    {{ states('input_number.soc_target_low_sun') | float }}
-                  {% elif price_is_low and expected_sun_very_low %}
-                    {{ states('input_number.soc_target_low_sun') | float }}
-                  {% else %}
-                    {{ states('input_number.soc_target_default') | float }}
-                  {% endif %}
+                value: "{{ states('sensor.computed_target_soc') | float }}"
             - service: script.turn_on
               target:
                 entity_id: script.stop_limit_discharging
@@ -86,12 +53,9 @@
 
         # Stop charging if battery reaches or exceeds the target SoC
         - conditions:
-            - condition: template
-              value_template: >
-                {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float %}
-                {% set target_soc = states('input_number.battery_target_soc') | float * 100 %}
-                {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
-                {{ (current_soc >= target_soc) and charging_active }}
+            - condition: state
+              entity_id: binary_sensor.should_stop_charging
+              state: "on"
           sequence:
             - service: script.turn_on
               target:
