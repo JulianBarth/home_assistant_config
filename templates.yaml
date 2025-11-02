@@ -71,12 +71,23 @@
         {% set battery_soc_threshold_low = states('sensor.battery_soc_threshold_low') | float / 100 %}
         {% set battery_soc = states('sensor.battery_soc_normalized') | float %}
         {% set price_is_low = is_state('binary_sensor.price_is_lowest_12_hours', 'on') %}
+        {% set price_in_bottom_25 = is_state('binary_sensor.price_is_in_bottom_25_percent', 'on') %}
         {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
         {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
         {% set expected_sun_very_low = is_state('binary_sensor.expected_sun_very_low', 'on') %}
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
-        {{ (price_is_lowest and (battery_soc <= battery_soc_threshold_high) and expected_sun_low) or 
-           (price_is_low and (battery_soc <= battery_soc_threshold_low) and expected_sun_very_low) and automation_on }}
+        {% set hysteresis_buffer = states('input_number.soc_hist') | float / 200 %}
+        
+        {# Primary charging condition: lowest price + low sun forecast #}
+        {% set primary_condition = price_is_lowest and (battery_soc <= battery_soc_threshold_high) and expected_sun_low %}
+        
+        {# Secondary condition: low price in 12h window + very low sun #}
+        {% set secondary_condition = price_is_low and (battery_soc <= battery_soc_threshold_low) and expected_sun_very_low %}
+        
+        {# Opportunistic condition: price in bottom 25% and battery very low #}
+        {% set opportunistic_condition = price_in_bottom_25 and (battery_soc <= (battery_soc_threshold_low - hysteresis_buffer)) and expected_sun_low %}
+        
+        {{ (primary_condition or secondary_condition or opportunistic_condition) and automation_on and charging_inactive }}
     
     - name: "Should Stop Charging"
       unique_id: should_stop_charging
@@ -84,7 +95,10 @@
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float %}
         {% set target_soc = states('input_number.battery_target_soc') | float * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
-        {{ (current_soc >= target_soc) and charging_active }}
+        {% set hysteresis = states('input_number.soc_hist') | float * 50 %}
+        
+        {# Stop charging when target is reached plus hysteresis buffer #}
+        {{ (current_soc >= (target_soc + hysteresis)) and charging_active }}
 
 # Computed target SoC sensor
 - sensor:

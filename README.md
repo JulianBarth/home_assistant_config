@@ -92,8 +92,20 @@ The system now includes a comprehensive Lovelace dashboard (`ui-lovelace.yaml`) 
 
 ## Getting Started
 For anyone wanting to expand or improve the project, start by focusing on:
-- **Energy Price Evaluations**: Improve the forecasting mechanism for energy prices and solar generation.
-- **Documentation**: Better structure and comments in the YAML files for easier future maintenance.
+- **Energy Price Evaluations**: The system now includes price percentile analysis and average price tracking for better decision-making.
+- **Documentation**: All YAML files now include comprehensive comments for easier maintenance.
+- **Algorithm Logic**: The charging algorithm uses a multi-tier approach:
+  1. **Primary**: Charge when price is at absolute lowest AND low solar forecast
+  2. **Secondary**: Charge when price is low (12h window) AND very low solar forecast
+  3. **Opportunistic**: Charge when price is in bottom 25% AND battery very low
+  4. **Hysteresis**: Built-in buffer prevents rapid charge cycling
+
+### Algorithm Improvements (2024)
+- **Price Percentile Analysis**: Current price is evaluated relative to next 12 hours
+- **Average Price Tracking**: Better context for price evaluation
+- **Enhanced Hysteresis**: Stop charging includes buffer to prevent cycling
+- **Opportunistic Charging**: Additional charging opportunity when prices are good but not optimal
+- **Multi-condition Logic**: Three-tier decision system for charging initiation
 
 Feel free to raise issues, suggest features, or contribute improvements.
 

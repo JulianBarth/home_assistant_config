@@ -66,16 +66,23 @@ views:
             entities:
               - entity: sensor.tibber_energy_prices
                 name: Current Price
+              - entity: sensor.tibber_energy_price_percentile_next_12_hours
+                name: Price Percentile (12h)
+              - entity: sensor.tibber_energy_average_price_next_12_hours
+                name: Average (12h)
               - entity: sensor.tibber_energy_lowest_price_next_12_hours
                 name: Lowest (12h)
               - entity: sensor.tibber_energy_lowest_price_next_24_hours
                 name: Lowest (24h)
               - entity: sensor.tibber_energy_highest_price_next_24_hours
                 name: Highest (24h)
+              - type: divider
               - entity: binary_sensor.price_is_lowest
                 name: Price is Lowest
               - entity: binary_sensor.price_is_lowest_12_hours
                 name: Price is Lowest (12h)
+              - entity: binary_sensor.price_is_in_bottom_25_percent
+                name: Price in Bottom 25%
           
           # Price History Graph
           - type: history-graph
