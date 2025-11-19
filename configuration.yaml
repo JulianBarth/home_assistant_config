@@ -34,11 +34,11 @@ input_boolean:
     icon: mdi:state-machine
     initial: true
   manual_charging_on:
-    name: Battery No Discharging
+    name: Manual Charging On
     icon: mdi:battery-charging
   manual_battery_charge:
     name: Manual Battery Charge
-    initial: off
+    initial: false
 
 input_number:
   battery_target_soc:
@@ -273,45 +273,45 @@ binary_sensor:
       price_is_lowest:
         friendly_name: "Price Is Lowest"
         value_template: >
-          {% set lowest_price_24_hours = states('sensor.tibber_energy_lowest_price_next_24_hours') | float %}
-          {% set current_price = (states('sensor.tibber_energy_prices') | float) * 100 %}
+          {% set lowest_price_24_hours = states('sensor.tibber_energy_lowest_price_next_24_hours') | float(default=999) %}
+          {% set current_price = (states('sensor.tibber_energy_prices') | float(default=999)) * 100 %}
           {% set price_tolerance = 3 %}
           {% if lowest_price_24_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
             true
           {% else %}
             false
           {% endif %}
-      
+
       # Binary sensor determining if the price is lower than the next interval (15 minutes)
       price_is_lower_than_next_hour:
         friendly_name: "Price Is Lower Than Next Interval"
         value_template: >
-          {% if states('sensor.tibber_energy_price_next_hour') | float > (((states('sensor.tibber_energy_prices') | float)*100)) %}
+          {% if states('sensor.tibber_energy_price_next_hour') | float(default=999) > (((states('sensor.tibber_energy_prices') | float(default=999))*100)) %}
             true
           {% else %}
             false
           {% endif %}
-      
+
       # Binary sensor determining if the price is the lowest in the next 12 hours
       price_is_lowest_12_hours:
         friendly_name: "Price Is Lowest 12 Hours"
         value_template: >
-          {% set lowest_price_12_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float %}
-          {% set current_price = (states('sensor.tibber_energy_prices') | float) * 100 %}
+          {% set lowest_price_12_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float(default=999) %}
+          {% set current_price = (states('sensor.tibber_energy_prices') | float(default=999)) * 100 %}
           {% set price_tolerance = 3 %}
           {% if lowest_price_12_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
             true
           {% else %}
             false
           {% endif %}
-      
+
       # Binary sensor for opportunistic charging based on price percentile
       price_is_in_bottom_25_percent:
         friendly_name: "Price in Bottom 25%"
         value_template: >
           {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
           {{ percentile <= 25 }}
-      
+
       # Binary sensor to detect if Tibber Pulse sensor is not functioning
       tibber_pulse_not_functioning:
         friendly_name: "Tibber Pulse Not Functioning"

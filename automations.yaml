@@ -13,7 +13,7 @@
       target:
         entity_id: input_number.battery_target_soc
       data:
-        value: "{{ states('input_number.manual_charge_target_soc') | float }}"
+        value: "{{ states('input_number.manual_charge_target_soc') | float(default=80) }}"
     - service: script.turn_on
       target:
         entity_id: script.stop_limit_discharging
@@ -45,7 +45,7 @@
               target:
                 entity_id: input_number.battery_target_soc
               data:
-                value: "{{ states('sensor.computed_target_soc') | float }}"
+                value: "{{ states('sensor.computed_target_soc') | float(default=15) }}"
             - service: script.turn_on
               target:
                 entity_id: script.stop_limit_discharging
@@ -79,7 +79,7 @@
         - conditions:
             - condition: template
               value_template: >
-                {% set wallbox_is_charging = is_state('sensor.wattpilot_carconnected', 'charging')  %} 
+                {% set wallbox_is_charging = is_state('sensor.wattpilot_carconnected', 'charging')  %}
                 {% set discharge_limited_not_active = is_state('input_boolean.battery_no_discharging_active', 'off') %}
                 {% set charging_not_active = is_state('input_boolean.battery_charging_active', 'off') %}
                 {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
@@ -110,7 +110,7 @@
         {% set ns = as_datetime(state_attr('sun.sun','next_setting')) | as_local %}
         {% set api_request_limit = 10 %}
         {% if nr > ns %}
-          {% set nr = nr - timedelta(hours = 24) %} 
+          {% set nr = nr - timedelta(hours = 24) %}
         {% endif %}
         {% set hours_difference = (ns - nr) %}
         {% set interval_hours = hours_difference / api_request_limit %}

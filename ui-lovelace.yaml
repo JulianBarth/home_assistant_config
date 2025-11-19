@@ -24,14 +24,14 @@ views:
               yellow: 20
               red: 0
             needle: true
-          
+
           # Current Price
           - type: sensor
             entity: sensor.tibber_energy_prices
             name: Price
             graph: line
             detail: 1
-          
+
           # Solar Remaining
           - type: sensor
             entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
@@ -154,7 +154,7 @@ views:
             name: SoC Threshold (Low)
           - entity: sensor.battery_soc_normalized
             name: Current SoC (Normalized)
-      
+
       - type: entities
         title: Solar Forecast
         entities:
@@ -166,7 +166,7 @@ views:
             name: Remaining Today
           - entity: sensor.solcast_pv_forecast_forecast_next_x_hours
             name: Forecast Next Hours
-      
+
       - type: entities
         title: Wallbox (Car Charging)
         entities:
@@ -190,7 +190,7 @@ views:
             name: Target (Default)
           - entity: input_number.soc_hist
             name: SoC Hysteresis
-      
+
       - type: entities
         title: Solar Forecast Thresholds
         entities:
@@ -198,7 +198,7 @@ views:
             name: Low Sun Threshold
           - entity: input_number.sun_threshold_very_low
             name: Very Low Sun Threshold
-      
+
       - type: entities
         title: Manual Control Scripts
         entities:
@@ -236,7 +236,7 @@ views:
             name: Target SoC
           - entity: sensor.computed_target_soc
             name: Computed Target
-      
+
       - type: history-graph
         title: Charging State (24h)
         hours_to_show: 24
@@ -247,7 +247,7 @@ views:
             name: Discharge Limited
           - entity: binary_sensor.should_start_charging
             name: Should Start Charging
-      
+
       - type: history-graph
         title: Price vs Solar Forecast (24h)
         hours_to_show: 24
@@ -258,7 +258,7 @@ views:
             name: Sun Low
           - entity: binary_sensor.expected_sun_very_low
             name: Sun Very Low
-      
+
       - type: entities
         title: System Health
         entities:
@@ -286,7 +286,7 @@ views:
             name: Half Regular Charge
           - entity: script.discharge_at_half_rate
             name: Discharge at Half Rate
-      
+
       - type: entities
         title: All Control Flags
         entities:
@@ -295,7 +295,7 @@ views:
           - entity: input_boolean.battery_automation_on
           - entity: input_boolean.manual_charging_on
           - entity: input_boolean.manual_battery_charge
-      
+
       - type: markdown
         title: System Information
         content: |
@@ -304,12 +304,12 @@ views:
           - **Battery:** BYD Battery Pack
           - **Wallbox:** Wattpilot
           - **Energy Monitor:** Tibber Pulse
-          
+
           ## Algorithm Features
           - Dynamic SoC targeting based on solar forecast
           - Price-based charging optimization
           - Car charging coordination
           - Hysteresis to prevent charge cycling
-          
+
           ## Documentation
           See README.md for complete setup and configuration details.

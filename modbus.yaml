@@ -91,7 +91,7 @@
       data_type: uint16
       address: 40360
       scan_interval: 5
-      #unit_of_measurement: "%"
+      # unit_of_measurement: "%"
       unique_id: 0d66a60e-22ba-4ca1-b492-780602b914d0
     - name: "Battery Control Mode (read/write)"
       slave: 1
