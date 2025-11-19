@@ -29,6 +29,7 @@
       entity_id:
         - binary_sensor.should_start_charging
         - binary_sensor.should_stop_charging
+        - sensor.computed_target_soc
     # Fallback check every 5 minutes to ensure automation runs even if state changes are missed
     - platform: time_pattern
       minutes: "/5"
