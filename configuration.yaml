@@ -273,7 +273,7 @@ binary_sensor:
       price_is_lowest:
         friendly_name: "Price Is Lowest"
         value_template: >
-          {% set lowest_price_24_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float %}
+          {% set lowest_price_24_hours = states('sensor.tibber_energy_lowest_price_next_24_hours') | float %}
           {% set current_price = (states('sensor.tibber_energy_prices') | float) * 100 %}
           {% set price_tolerance = 3 %}
           {% if lowest_price_24_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}

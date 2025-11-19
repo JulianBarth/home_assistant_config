@@ -156,7 +156,7 @@
   trigger:
     - platform: numeric_state
       entity_id: sensor.reading_energy_battery_soc_scaled
-      below: 750 # Adjust if your SoC is scaled differently (e.g., 7% is 7500)
+      below: 750 # Adjust if your SoC is scaled differently (e.g., 7.5% is 750)
   action:
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
