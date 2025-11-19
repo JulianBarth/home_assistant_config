@@ -66,30 +66,19 @@
     - name: "Should Start Charging"
       unique_id: should_start_charging
       state: >
-        {% set price_is_lowest = is_state('binary_sensor.price_is_lowest', 'on') %}
-        {% set battery_soc_threshold_high = states('sensor.battery_soc_threshold_high') | float / 100 %}
-        {% set battery_soc_threshold_low = states('sensor.battery_soc_threshold_low') | float / 100 %}
-        {% set battery_soc = states('sensor.battery_soc_normalized') | float %}
-        {% set price_is_low = is_state('binary_sensor.price_is_lowest_12_hours', 'on') %}
-        {% set price_in_bottom_25 = is_state('binary_sensor.price_is_in_bottom_25_percent', 'on') %}
-        {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
-        {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
-        {% set expected_sun_very_low = is_state('binary_sensor.expected_sun_very_low', 'on') %}
+        {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float %}
+        {% set target_soc = states('sensor.computed_target_soc') | float * 100 %}
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
+        {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
         
-        {# Hysteresis buffer: divide by 200 to convert % to fractional buffer (e.g., 5% → 0.025) #}
-        {% set hysteresis_buffer = states('input_number.soc_hist') | float / 200 %}
+        {# Hysteresis buffer: divide by 200 to convert % to fractional buffer (e.g., 5% -> 0.025) #}
+        {# We use a scaled comparison here. Target SoC is in %, Current is scaled (100% = 10000) #}
+        {# So Target 80% = 80. Current 80% = 8000. #}
+        {# Let's convert Target to Scaled: Target * 100 #}
         
-        {# Primary charging condition: lowest price + low sun forecast #}
-        {% set primary_condition = price_is_lowest and (battery_soc <= battery_soc_threshold_high) and expected_sun_low %}
+        {% set hysteresis_buffer = states('input_number.soc_hist') | float * 50 %}
         
-        {# Secondary condition: low price in 12h window + very low sun #}
-        {% set secondary_condition = price_is_low and (battery_soc <= battery_soc_threshold_low) and expected_sun_very_low %}
-        
-        {# Opportunistic condition: price in bottom 25% and battery very low #}
-        {% set opportunistic_condition = price_in_bottom_25 and (battery_soc <= (battery_soc_threshold_low - hysteresis_buffer)) and expected_sun_low %}
-        
-        {{ (primary_condition or secondary_condition or opportunistic_condition) and automation_on and charging_inactive }}
+        {{ (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive }}
     
     - name: "Should Stop Charging"
       unique_id: should_stop_charging
@@ -98,11 +87,10 @@
         {% set target_soc = states('input_number.battery_target_soc') | float * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
         
-        {# Hysteresis: multiply by 50 to convert % to scaled SoC units (scaled SoC is in 0.01% increments) #}
-        {# Example: 5% hysteresis × 50 = 250 scaled units = 2.5% actual #}
+        {# Hysteresis: multiply by 50 to convert % to scaled SoC units #}
         {% set hysteresis = states('input_number.soc_hist') | float * 50 %}
         
-        {# Stop charging when target is reached plus hysteresis buffer to prevent immediate restart #}
+        {# Stop charging when target is reached plus hysteresis buffer #}
         {{ (current_soc >= (target_soc + hysteresis)) and charging_active }}
 
 # Computed target SoC sensor
@@ -111,16 +99,29 @@
       unique_id: computed_target_soc
       unit_of_measurement: "%"
       state: >
-        {% set price_is_lowest = is_state('binary_sensor.price_is_lowest', 'on') %}
-        {% set price_is_low = is_state('binary_sensor.price_is_lowest_12_hours', 'on') %}
-        {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
+        {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
         {% set expected_sun_very_low = is_state('binary_sensor.expected_sun_very_low', 'on') %}
-        {% if price_is_lowest and expected_sun_very_low %}
-          {{ states('input_number.soc_target_very_low_sun') | float }}
-        {% elif price_is_lowest and expected_sun_low %}
-          {{ states('input_number.soc_target_low_sun') | float }}
-        {% elif price_is_low and expected_sun_very_low %}
-          {{ states('input_number.soc_target_low_sun') | float }}
+        {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
+        
+        {# Profitability Check: Max Price > Current Price * 1.15 #}
+        {% set current_price = states('sensor.tibber_energy_prices') | float(default=0) %}
+        {% set max_price_24h = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
+        {% set is_profitable = max_price_24h > (current_price * 1.15) %}
+        
+        {% if not is_profitable %}
+          {{ states('input_number.soc_target_default') | float }}
+        {% elif percentile <= 25 %}
+          {# Cheap Energy: Fill based on Sun Forecast #}
+          {% if expected_sun_very_low %}
+            100
+          {% elif expected_sun_low %}
+            70
+          {% else %}
+            {{ states('input_number.soc_target_default') | float }}
+          {% endif %}
+        {% elif percentile <= 50 and expected_sun_very_low %}
+          {# Moderate Price + Very Low Sun: Top up a bit #}
+          60
         {% else %}
           {{ states('input_number.soc_target_default') | float }}
         {% endif %}
