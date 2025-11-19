@@ -61,6 +61,14 @@
       state: >
         {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float <= states('input_number.sun_threshold_very_low') | float }}
 
+    - name: "Charging Is Profitable"
+      unique_id: charging_is_profitable
+      icon: mdi:cash-check
+      state: >
+        {% set current_price = states('sensor.tibber_energy_prices') | float(default=0) %}
+        {% set max_price_24h = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
+        {{ max_price_24h > (current_price * 1.15) }}
+
 # Binary sensor for charging conditions
 - binary_sensor:
     - name: "Should Start Charging"
