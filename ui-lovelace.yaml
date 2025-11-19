@@ -8,39 +8,15 @@ title: Battery Management System
 views:
   - title: Overview
     path: overview
-    icon: mdi:battery-charging
+    icon: mdi:view-dashboard
     cards:
-      # Battery Status Card
-      - type: vertical-stack
+      # --- HEADER: AT A GLANCE ---
+      - type: horizontal-stack
         cards:
-          - type: markdown
-            content: |
-              # 🔋 Battery Management System
-              Automated battery charging and discharging control
-          
-          # Main Battery Status
-          - type: entities
-            title: Battery Status
-            entities:
-              - entity: sensor.batterie_soc
-                name: Battery State of Charge
-                icon: mdi:battery
-              - entity: sensor.charging_state
-                name: Charging State
-              - entity: input_boolean.battery_charging_active
-                name: Charging Active
-              - entity: input_boolean.battery_no_discharging_active
-                name: Discharge Limited
-              - entity: input_number.battery_target_soc
-                name: Target SoC
-              - entity: sensor.computed_target_soc
-                name: Computed Target (Smart)
-                icon: mdi:target-account
-          
           # Battery Gauge
           - type: gauge
             entity: sensor.batterie_soc
-            name: Battery Level
+            name: Battery
             min: 0
             max: 100
             severity:
@@ -48,61 +24,120 @@ views:
               yellow: 20
               red: 0
             needle: true
-      
-      # Automation Control Card
-      - type: entities
-        title: Automation Control
-        entities:
-          - entity: input_boolean.battery_automation_on
-            name: Automation Enabled
-          - entity: input_boolean.manual_battery_charge
-            name: Manual Charge
-          - type: divider
-          - entity: input_number.manual_charge_target_soc
-            name: Manual Target SoC
-      
-      # Energy Price Card
-      - type: vertical-stack
-        cards:
-          - type: entities
-            title: Energy Prices (Tibber)
-            entities:
-              - entity: sensor.tibber_energy_prices
-                name: Current Price
-              - entity: sensor.tibber_energy_price_percentile_next_12_hours
-                name: Price Percentile (12h)
-              - entity: sensor.tibber_energy_average_price_next_12_hours
-                name: Average (12h)
-              - entity: sensor.tibber_energy_lowest_price_next_12_hours
-                name: Lowest (12h)
-              - entity: sensor.tibber_energy_lowest_price_next_24_hours
-                name: Lowest (24h)
-              - entity: sensor.tibber_energy_highest_price_next_24_hours
-                name: Highest (24h)
-              - type: divider
-              - entity: binary_sensor.price_is_lowest
-                name: Price is Lowest
-              - entity: binary_sensor.price_is_lowest_12_hours
-                name: Price is Lowest (12h)
-              - entity: binary_sensor.price_is_in_bottom_25_percent
-                name: Price in Bottom 25%
-              - type: divider
-              - entity: binary_sensor.charging_is_profitable
-                name: Charging is Profitable (>15% Spread)
           
-          # Price History Graph
-          - type: history-graph
-            title: Price History
-            hours_to_show: 24
-            entities:
-              - entity: sensor.tibber_energy_prices
-                name: Current Price
+          # Current Price
+          - type: sensor
+            entity: sensor.tibber_energy_prices
+            name: Price
+            graph: line
+            detail: 1
+          
+          # Solar Remaining
+          - type: sensor
+            entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
+            name: Solar Left
+            graph: line
+            detail: 1
 
+      # --- MAIN GRID ---
+      - type: horizontal-stack
+        cards:
+          # COLUMN 1: BATTERY STATUS
+          - type: vertical-stack
+            cards:
+              - type: entities
+                title: Battery Status
+                show_header_toggle: false
+                entities:
+                  - entity: sensor.charging_state
+                    name: State
+                  - entity: input_number.battery_target_soc
+                    name: Target SoC
+                  - entity: sensor.computed_target_soc
+                    name: Smart Target
+                    icon: mdi:target-account
+                  - type: divider
+                  - entity: input_boolean.battery_charging_active
+                    name: Charging Active
+                  - entity: input_boolean.battery_no_discharging_active
+                    name: Discharge Limited
+
+              - type: history-graph
+                title: SoC History (24h)
+                hours_to_show: 24
+                entities:
+                  - entity: sensor.batterie_soc
+                    name: SoC
+                  - entity: sensor.computed_target_soc
+                    name: Smart Target
+
+          # COLUMN 2: ECONOMICS
+          - type: vertical-stack
+            cards:
+              - type: entities
+                title: Economics
+                show_header_toggle: false
+                entities:
+                  - entity: binary_sensor.charging_is_profitable
+                    name: Profitable to Charge
+                  - type: divider
+                  - entity: sensor.tibber_energy_lowest_price_next_24_hours
+                    name: 24h Low
+                  - entity: sensor.tibber_energy_highest_price_next_24_hours
+                    name: 24h High
+                  - entity: sensor.tibber_energy_price_percentile_next_12_hours
+                    name: Price Percentile (12h)
+
+              - type: history-graph
+                title: Price History
+                hours_to_show: 24
+                entities:
+                  - entity: sensor.tibber_energy_prices
+                    name: Price
+
+          # COLUMN 3: CONTROLS & HEALTH
+          - type: vertical-stack
+            cards:
+              - type: entities
+                title: Wallbox & Car
+                show_header_toggle: false
+                entities:
+                  - entity: sensor.wattpilot_carconnected
+                    name: Status
+                  - entity: select.wattpilot_charging_mode
+                    name: Mode
+                  - type: divider
+                  - entity: input_boolean.battery_no_discharging_active
+                    name: Discharge Limited (Car)
+
+              - type: entities
+                title: Controls
+                show_header_toggle: false
+                entities:
+                  - entity: input_boolean.battery_automation_on
+                    name: Automation Enabled
+                  - entity: input_boolean.manual_battery_charge
+                    name: Manual Charge
+                  - entity: input_number.manual_charge_target_soc
+                    name: Manual Target
+
+              - type: entities
+                title: Logic & Health
+                show_header_toggle: false
+                entities:
+                  - entity: binary_sensor.should_start_charging
+                    name: Should Start
+                  - entity: binary_sensor.should_stop_charging
+                    name: Should Stop
+                  - type: divider
+                  - entity: binary_sensor.tibber_pulse_not_functioning
+                    name: Tibber Pulse Status
+
+  # --- OTHER VIEWS (KEPT FOR DETAIL) ---
   - title: Charging Logic
     path: charging_logic
     icon: mdi:lightning-bolt
     cards:
-      # Charging Decision Sensors
       - type: entities
         title: Charging Decision Logic
         entities:
@@ -120,7 +155,6 @@ views:
           - entity: sensor.battery_soc_normalized
             name: Current SoC (Normalized)
       
-      # Solar Forecast Card
       - type: entities
         title: Solar Forecast
         entities:
@@ -133,7 +167,6 @@ views:
           - entity: sensor.solcast_pv_forecast_forecast_next_x_hours
             name: Forecast Next Hours
       
-      # Car Charging Status
       - type: entities
         title: Wallbox (Car Charging)
         entities:
@@ -146,7 +179,6 @@ views:
     path: configuration
     icon: mdi:cog
     cards:
-      # SoC Target Settings
       - type: entities
         title: Target SoC Settings
         entities:
@@ -159,7 +191,6 @@ views:
           - entity: input_number.soc_hist
             name: SoC Hysteresis
       
-      # Solar Thresholds
       - type: entities
         title: Solar Forecast Thresholds
         entities:
@@ -168,7 +199,6 @@ views:
           - entity: input_number.sun_threshold_very_low
             name: Very Low Sun Threshold
       
-      # Manual Scripts
       - type: entities
         title: Manual Control Scripts
         entities:
@@ -196,7 +226,6 @@ views:
     path: monitoring
     icon: mdi:chart-line
     cards:
-      # Battery History
       - type: history-graph
         title: Battery State of Charge (24h)
         hours_to_show: 24
@@ -208,7 +237,6 @@ views:
           - entity: sensor.computed_target_soc
             name: Computed Target
       
-      # Charging State History
       - type: history-graph
         title: Charging State (24h)
         hours_to_show: 24
@@ -220,7 +248,6 @@ views:
           - entity: binary_sensor.should_start_charging
             name: Should Start Charging
       
-      # Price and Solar Correlation
       - type: history-graph
         title: Price vs Solar Forecast (24h)
         hours_to_show: 24
@@ -232,7 +259,6 @@ views:
           - entity: binary_sensor.expected_sun_very_low
             name: Sun Very Low
       
-      # System Health
       - type: entities
         title: System Health
         entities:
@@ -251,7 +277,6 @@ views:
     path: advanced
     icon: mdi:tune
     cards:
-      # Modbus Controls
       - type: entities
         title: Advanced Modbus Controls
         entities:
@@ -262,7 +287,6 @@ views:
           - entity: script.discharge_at_half_rate
             name: Discharge at Half Rate
       
-      # All Input Booleans
       - type: entities
         title: All Control Flags
         entities:
@@ -272,7 +296,6 @@ views:
           - entity: input_boolean.manual_charging_on
           - entity: input_boolean.manual_battery_charge
       
-      # System Information
       - type: markdown
         title: System Information
         content: |
