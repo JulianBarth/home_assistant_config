@@ -39,6 +39,27 @@ views:
             graph: line
             detail: 1
 
+      # --- BALKONKRAFTWERK ---
+      - type: entities
+        title: Balkonkraftwerk (800W)
+        show_header_toggle: false
+        entities:
+          - entity: sensor.balkonkraftwerk_power
+            name: Current Power
+          - entity: sensor.balkonkraftwerk_daily_energy
+            name: Daily Energy
+          - entity: sensor.balkonkraftwerk_status
+            name: Status
+          - entity: binary_sensor.balkonkraftwerk_online
+            name: Online
+          - type: divider
+          - entity: sensor.deye_grid_voltage
+            name: Grid Voltage
+          - entity: sensor.deye_grid_frequency
+            name: Grid Frequency
+          - entity: sensor.deye_temperature
+            name: Temperature
+
       # --- MAIN GRID ---
       - type: horizontal-stack
         cards:
@@ -259,6 +280,15 @@ views:
           - entity: binary_sensor.expected_sun_very_low
             name: Sun Very Low
 
+      - type: history-graph
+        title: Balkonkraftwerk Power (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.balkonkraftwerk_power
+            name: Power Output
+          - entity: sensor.deye_temperature
+            name: Temperature
+
       - type: entities
         title: System Health
         entities:
@@ -304,6 +334,9 @@ views:
           - **Battery:** BYD Battery Pack
           - **Wallbox:** Wattpilot
           - **Energy Monitor:** Tibber Pulse
+          - **Balkonkraftwerk:** Deye Micro Wechsel 1 (800W)
+            - IP: 192.168.178.78
+            - Logger: 3966925526
 
           ## Algorithm Features
           - Dynamic SoC targeting based on solar forecast
