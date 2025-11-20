@@ -133,3 +133,44 @@
         {% else %}
           {{ states('input_number.soc_target_default') | float(default=15) }}
         {% endif %}
+
+# Balcony Power Plant (Balkonkraftwerk) Sensors
+- sensor:
+    - name: "Balkonkraftwerk Power"
+      unique_id: balkonkraftwerk_power
+      icon: mdi:solar-power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {{ states('sensor.deye_ac_power') | float(default=0) }}
+
+    - name: "Balkonkraftwerk Daily Energy"
+      unique_id: balkonkraftwerk_daily_energy
+      icon: mdi:solar-panel
+      unit_of_measurement: kWh
+      device_class: energy
+      state_class: total_increasing
+      state: >
+        {{ states('sensor.deye_daily_energy') | float(default=0) }}
+
+    - name: "Balkonkraftwerk Status"
+      unique_id: balkonkraftwerk_status
+      icon: mdi:state-machine
+      state: >
+        {% set power = states('sensor.deye_ac_power') | float(default=0) %}
+        {% if power > 10 %}
+          Producing
+        {% elif power > 0 %}
+          Idle
+        {% else %}
+          Offline
+        {% endif %}
+
+- binary_sensor:
+    - name: "Balkonkraftwerk Online"
+      unique_id: balkonkraftwerk_online
+      device_class: connectivity
+      state: >
+        {% set power = states('sensor.deye_ac_power') %}
+        {{ power not in ['unavailable', 'unknown', 'None'] }}

@@ -13,14 +13,15 @@ This project aims to automate the charging and discharging behavior of a basemen
 - **Limit Discharging During Car Charging**: Prevent the battery from discharging when a car is being charged via the connected wallbox to maintain energy efficiency.
 - **Incorporate Solar Forecast**: The automation takes the expected solar generation into account to ensure the battery charges when solar production is anticipated to be lower.
 - **Tibber Pulse Monitoring**: Monitor the Tibber Pulse sensor health and receive notifications when the sensor is not functioning (e.g., low battery or connectivity issues).
-- **Hardware Setup**: This setup is designed for a **Fronius Gen24 6.0 Inverter**, **Wattpilot Wallbox**, and a **BYD Battery Pack**.
+- **Balkonkraftwerk Integration**: Monitor the 800W balcony power plant (Deye Micro Inverter) for real-time power production and status.
+- **Hardware Setup**: This setup is designed for a **Fronius Gen24 6.0 Inverter**, **Wattpilot Wallbox**, **BYD Battery Pack**, and **Deye Micro Wechsel 1** (800W Balkonkraftwerk).
 
 **Note:** This project might help others, but it's very far from perfect. Many components are not structured well enough, and further documentation and refactoring are needed. The algorithm is also a work in progress.
 
 ## Home Assistant Extensions Used
 The automations and scripts make use of the following Home Assistant integrations:
 
-1. **Modbus Integration**: Used to communicate with the **Fronius Inverter** for reading battery states and controlling charging parameters (as seen in `modbus.yaml`). Make sure **Modbus TCP** is activated on your Fronius inverter.
+1. **Modbus Integration**: Used to communicate with the **Fronius Inverter** and **Deye Micro Inverter** for reading battery states, inverter status, and controlling charging parameters (as seen in `modbus.yaml`). Make sure **Modbus TCP** is activated on your Fronius inverter and that the Deye logger is accessible via Modbus.
 2. **REST Integration**: Used to query energy prices from **Tibber** to determine optimal times to charge the battery (as specified in `configuration.yaml`).
 3. **Template Sensors**: Custom sensors and binary sensors are used for calculations like determining when the price is lowest or checking the battery's state of charge (`templates.yaml`).
 4. **Input Booleans & Input Numbers**: Used for managing states like whether the battery charging automation is active or to set target SoC levels (`configuration.yaml`).
