@@ -10,49 +10,61 @@ views:
     path: overview
     icon: mdi:view-dashboard
     cards:
-      # --- HEADER: AT A GLANCE ---
-      - type: horizontal-stack
-        cards:
-          # Battery Gauge
-          - type: gauge
-            entity: sensor.batterie_soc
-            name: Battery
-            min: 0
-            max: 100
-            severity:
-              green: 50
-              yellow: 20
-              red: 0
-            needle: true
+      # --- MOBILE-FRIENDLY: BATTERY GAUGE ---
+      - type: gauge
+        entity: sensor.batterie_soc
+        name: Battery State of Charge
+        min: 0
+        max: 100
+        severity:
+          green: 50
+          yellow: 20
+          red: 0
+        needle: true
 
-          # Current Price
-          - type: sensor
-            entity: sensor.tibber_energy_prices
-            name: Price
-            graph: line
-            detail: 1
-
-          # Solar Remaining
-          - type: sensor
-            entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
-            name: Solar Left
-            graph: line
-            detail: 1
-
-      # --- BALKONKRAFTWERK ---
+      # --- SOLAR PRODUCTION OVERVIEW ---
       - type: entities
-        title: Balkonkraftwerk (800W)
+        title: ☀️ Solar Production
         show_header_toggle: false
         entities:
+          - entity: sensor.total_solar_power
+            name: Total Solar Power
+            icon: mdi:solar-power-variant
+          - type: divider
+          - entity: sensor.fronius_solar_power
+            name: Fronius (Main System)
+            icon: mdi:solar-panel-large
+          - entity: sensor.fronius_solar_status
+            name: Fronius Status
+          - entity: binary_sensor.fronius_solar_online
+            name: Fronius Online
+          - type: divider
           - entity: sensor.balkonkraftwerk_power
-            name: Current Power
+            name: Balkonkraftwerk (800W)
+            icon: mdi:solar-panel
+          - entity: sensor.balkonkraftwerk_status
+            name: Balkonkraftwerk Status
+          - entity: binary_sensor.balkonkraftwerk_online
+            name: Balkonkraftwerk Online
+
+      # --- ENERGY & FORECAST ---
+      - type: entities
+        title: 💰 Energy & Forecast
+        show_header_toggle: false
+        entities:
+          - entity: sensor.tibber_energy_prices
+            name: Current Price
+          - entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
+            name: Solar Remaining Today
+
+      # --- BALKONKRAFTWERK DETAILS ---
+      - type: entities
+        title: Balkonkraftwerk Details (Deye)
+        show_header_toggle: false
+        state_color: true
+        entities:
           - entity: sensor.balkonkraftwerk_daily_energy
             name: Daily Energy
-          - entity: sensor.balkonkraftwerk_status
-            name: Status
-          - entity: binary_sensor.balkonkraftwerk_online
-            name: Online
-          - type: divider
           - entity: sensor.deye_grid_voltage
             name: Grid Voltage
           - entity: sensor.deye_grid_frequency
@@ -60,99 +72,208 @@ views:
           - entity: sensor.deye_temperature
             name: Temperature
 
-      # --- MAIN GRID ---
-      - type: horizontal-stack
-        cards:
-          # COLUMN 1: BATTERY STATUS
-          - type: vertical-stack
-            cards:
-              - type: entities
-                title: Battery Status
-                show_header_toggle: false
-                entities:
-                  - entity: sensor.charging_state
-                    name: State
-                  - entity: input_number.battery_target_soc
-                    name: Target SoC
-                  - entity: sensor.computed_target_soc
-                    name: Smart Target
-                    icon: mdi:target-account
-                  - type: divider
-                  - entity: input_boolean.battery_charging_active
-                    name: Charging Active
-                  - entity: input_boolean.battery_no_discharging_active
-                    name: Discharge Limited
+      # --- BATTERY STATUS ---
+      - type: entities
+        title: 🔋 Battery Status
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - entity: sensor.batterie_soc
+            name: State of Charge
+          - entity: sensor.charging_state
+            name: State
+          - entity: input_number.battery_target_soc
+            name: Target SoC
+          - entity: sensor.computed_target_soc
+            name: Smart Target
+            icon: mdi:target-account
+          - type: divider
+          - entity: input_boolean.battery_charging_active
+            name: Charging Active
+          - entity: input_boolean.battery_no_discharging_active
+            name: Discharge Limited
 
-              - type: history-graph
-                title: SoC History (24h)
-                hours_to_show: 24
-                entities:
-                  - entity: sensor.batterie_soc
-                    name: SoC
-                  - entity: sensor.computed_target_soc
-                    name: Smart Target
+      # --- BATTERY HISTORY ---
+      - type: history-graph
+        title: Battery SoC History (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.batterie_soc
+            name: SoC
+          - entity: sensor.computed_target_soc
+            name: Smart Target
 
-          # COLUMN 2: ECONOMICS
-          - type: vertical-stack
-            cards:
-              - type: entities
-                title: Economics
-                show_header_toggle: false
-                entities:
-                  - entity: binary_sensor.charging_is_profitable
-                    name: Profitable to Charge
-                  - type: divider
-                  - entity: sensor.tibber_energy_lowest_price_next_24_hours
-                    name: 24h Low
-                  - entity: sensor.tibber_energy_highest_price_next_24_hours
-                    name: 24h High
-                  - entity: sensor.tibber_energy_price_percentile_next_12_hours
-                    name: Price Percentile (12h)
+      # --- ECONOMICS ---
+      - type: entities
+        title: 💶 Economics
+        show_header_toggle: false
+        entities:
+          - entity: binary_sensor.charging_is_profitable
+            name: Profitable to Charge
+          - type: divider
+          - entity: sensor.tibber_energy_lowest_price_next_24_hours
+            name: 24h Low
+          - entity: sensor.tibber_energy_highest_price_next_24_hours
+            name: 24h High
+          - entity: sensor.tibber_energy_price_percentile_next_12_hours
+            name: Price Percentile (12h)
 
-              - type: history-graph
-                title: Price History
-                hours_to_show: 24
-                entities:
-                  - entity: sensor.tibber_energy_prices
-                    name: Price
+      # --- PRICE HISTORY ---
+      - type: history-graph
+        title: Price History (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.tibber_energy_prices
+            name: Price
 
-          # COLUMN 3: CONTROLS & HEALTH
-          - type: vertical-stack
-            cards:
-              - type: entities
-                title: Wallbox & Car
-                show_header_toggle: false
-                entities:
-                  - entity: sensor.wattpilot_carconnected
-                    name: Status
-                  - entity: select.wattpilot_charging_mode
-                    name: Mode
-                  - type: divider
-                  - entity: input_boolean.battery_no_discharging_active
-                    name: Discharge Limited (Car)
+      # --- WALLBOX & CAR ---
+      - type: entities
+        title: 🚗 Wallbox & Car
+        show_header_toggle: false
+        entities:
+          - entity: sensor.wattpilot_carconnected
+            name: Status
+          - entity: select.wattpilot_charging_mode
+            name: Mode
+          - type: divider
+          - entity: input_boolean.battery_no_discharging_active
+            name: Discharge Limited (Car)
 
-              - type: entities
-                title: Controls
-                show_header_toggle: false
-                entities:
-                  - entity: input_boolean.battery_automation_on
-                    name: Automation Enabled
-                  - entity: input_boolean.manual_battery_charge
-                    name: Manual Charge
-                  - entity: input_number.manual_charge_target_soc
-                    name: Manual Target
+      # --- CONTROLS ---
+      - type: entities
+        title: ⚙️ Controls
+        show_header_toggle: false
+        entities:
+          - entity: input_boolean.battery_automation_on
+            name: Automation Enabled
+          - entity: input_boolean.manual_battery_charge
+            name: Manual Charge
+          - entity: input_number.manual_charge_target_soc
+            name: Manual Target
 
-              - type: entities
-                title: Logic & Health
-                show_header_toggle: false
-                entities:
-                  - entity: binary_sensor.should_start_charging
-                    name: Should Start
-                  - entity: binary_sensor.should_stop_charging
-                    name: Should Stop
-                  - type: divider
-                  - entity: binary_sensor.tibber_pulse_not_functioning
-                    name: Tibber Pulse Status
+      # --- LOGIC & HEALTH ---
+      - type: entities
+        title: 🔍 Logic & Health
+        show_header_toggle: false
+        entities:
+          - entity: binary_sensor.should_start_charging
+            name: Should Start
+          - entity: binary_sensor.should_stop_charging
+            name: Should Stop
+          - type: divider
+          - entity: binary_sensor.tibber_pulse_not_functioning
+            name: Tibber Pulse Status
+
+  # --- SOLAR PRODUCTION VIEW ---
+  - title: Solar
+    path: solar
+    icon: mdi:solar-power
+    cards:
+      # --- TOTAL SOLAR POWER GAUGE ---
+      - type: gauge
+        entity: sensor.total_solar_power
+        name: Total Solar Production
+        min: 0
+        max: 6800
+        severity:
+          green: 1000
+          yellow: 100
+          red: 0
+        needle: true
+
+      # --- SOLAR SYSTEMS OVERVIEW ---
+      - type: entities
+        title: ☀️ Solar Systems Overview
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - entity: sensor.total_solar_power
+            name: Total Power
+            icon: mdi:solar-power-variant
+          - type: divider
+          - type: section
+            label: Fronius Gen24 6.0 (Main System)
+          - entity: sensor.fronius_solar_power
+            name: Current Power
+            icon: mdi:solar-panel-large
+          - entity: sensor.fronius_solar_status
+            name: Status
+          - entity: binary_sensor.fronius_solar_online
+            name: Online Status
+          - type: divider
+          - type: section
+            label: Balkonkraftwerk Deye (800W)
+          - entity: sensor.balkonkraftwerk_power
+            name: Current Power
+            icon: mdi:solar-panel
+          - entity: sensor.balkonkraftwerk_daily_energy
+            name: Daily Energy
+          - entity: sensor.balkonkraftwerk_status
+            name: Status
+          - entity: binary_sensor.balkonkraftwerk_online
+            name: Online Status
+
+      # --- SOLAR POWER HISTORY ---
+      - type: history-graph
+        title: Solar Power Production (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fronius_solar_power
+            name: Fronius
+          - entity: sensor.balkonkraftwerk_power
+            name: Balkonkraftwerk
+          - entity: sensor.total_solar_power
+            name: Total
+
+      # --- FRONIUS DETAILS ---
+      - type: entities
+        title: Fronius Gen24 Details
+        show_header_toggle: false
+        entities:
+          - entity: sensor.reading_energy_inverter_ac_output
+            name: AC Output Power
+          - entity: sensor.reading_energy_main_meter
+            name: Main Meter Reading
+          - entity: sensor.batterie_soc
+            name: Battery SoC
+
+      # --- DEYE BALKONKRAFTWERK DETAILS ---
+      - type: entities
+        title: Deye Balkonkraftwerk Details
+        show_header_toggle: false
+        entities:
+          - entity: sensor.deye_ac_power
+            name: AC Power Output
+          - entity: sensor.deye_daily_energy
+            name: Daily Energy
+          - entity: sensor.deye_grid_voltage
+            name: Grid Voltage
+          - entity: sensor.deye_grid_frequency
+            name: Grid Frequency
+          - entity: sensor.deye_temperature
+            name: Inverter Temperature
+
+      # --- BALKONKRAFTWERK TEMPERATURE HISTORY ---
+      - type: history-graph
+        title: Balkonkraftwerk Temperature (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.deye_temperature
+            name: Temperature
+
+      # --- SOLAR FORECAST ---
+      - type: entities
+        title: ☀️ Solar Forecast
+        show_header_toggle: false
+        entities:
+          - entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
+            name: Remaining Today
+          - entity: sensor.solcast_pv_forecast_forecast_next_x_hours
+            name: Forecast Next Hours
+          - entity: binary_sensor.expected_sun_low
+            name: Expected Sun Low
+          - entity: binary_sensor.expected_sun_very_low
+            name: Expected Sun Very Low
 
   # --- OTHER VIEWS (KEPT FOR DETAIL) ---
   - title: Charging Logic
@@ -247,8 +368,21 @@ views:
     path: monitoring
     icon: mdi:chart-line
     cards:
+      # --- SOLAR PRODUCTION MONITORING ---
       - type: history-graph
-        title: Battery State of Charge (24h)
+        title: ☀️ Solar Power Production (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.total_solar_power
+            name: Total Solar
+          - entity: sensor.fronius_solar_power
+            name: Fronius
+          - entity: sensor.balkonkraftwerk_power
+            name: Balkonkraftwerk
+
+      # --- BATTERY MONITORING ---
+      - type: history-graph
+        title: 🔋 Battery State of Charge (24h)
         hours_to_show: 24
         entities:
           - entity: sensor.batterie_soc
@@ -269,8 +403,9 @@ views:
           - entity: binary_sensor.should_start_charging
             name: Should Start Charging
 
+      # --- PRICE MONITORING ---
       - type: history-graph
-        title: Price vs Solar Forecast (24h)
+        title: 💰 Price vs Solar Forecast (24h)
         hours_to_show: 24
         entities:
           - entity: sensor.tibber_energy_prices
@@ -280,12 +415,11 @@ views:
           - entity: binary_sensor.expected_sun_very_low
             name: Sun Very Low
 
+      # --- BALKONKRAFTWERK MONITORING ---
       - type: history-graph
-        title: Balkonkraftwerk Power (24h)
+        title: 🌡️ Balkonkraftwerk Temperature (24h)
         hours_to_show: 24
         entities:
-          - entity: sensor.balkonkraftwerk_power
-            name: Power Output
           - entity: sensor.deye_temperature
             name: Temperature
 
@@ -329,20 +463,25 @@ views:
       - type: markdown
         title: System Information
         content: |
-          ## Hardware Setup
+          ## 🌞 Solar Systems
+          - **Main System:** Fronius Gen24 6.0 (up to 6.0 kW)
+          - **Balkonkraftwerk:** Deye Micro Wechsel 1 (800W)
+            - IP: 192.168.178.78
+            - Logger: 3966925526
+          - **Combined Capacity:** 6.8 kW total
+
+          ## 🔋 Energy Storage
           - **Inverter:** Fronius Gen24 6.0
           - **Battery:** BYD Battery Pack
           - **Wallbox:** Wattpilot
           - **Energy Monitor:** Tibber Pulse
-          - **Balkonkraftwerk:** Deye Micro Wechsel 1 (800W)
-            - IP: 192.168.178.78
-            - Logger: 3966925526
 
-          ## Algorithm Features
+          ## ⚙️ Algorithm Features
           - Dynamic SoC targeting based on solar forecast
           - Price-based charging optimization
           - Car charging coordination
           - Hysteresis to prevent charge cycling
+          - Dual solar system monitoring
 
-          ## Documentation
+          ## 📖 Documentation
           See README.md for complete setup and configuration details.
