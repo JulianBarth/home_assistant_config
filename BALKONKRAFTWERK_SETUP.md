@@ -38,6 +38,21 @@ Updated the project documentation to include the Deye Micro Wechsel 1 in the har
 
 ## What You Need to Do
 
+### Step 0: Check If You Need a Modbus Converter
+
+**Most modern Deye/Solarman loggers DO NOT need a converter** if they have WiFi connectivity. The logger acts as a Modbus TCP gateway.
+
+**Check your logger capabilities:**
+1. Try accessing `http://192.168.178.78` in a browser - if you see a web interface, Modbus TCP is likely supported
+2. Check if the Solarman app shows real-time data via WiFi (not just cloud) - this indicates Modbus TCP capability
+3. Logger serial 3966925526 suggests an IGEN-Tech/Solarman logger which typically supports Modbus TCP natively
+
+**If your logger only has RS485 (no WiFi or WiFi-only cloud):**
+- You'll need a **Modbus RTU-to-TCP converter** (e.g., Waveshare RS485-to-Ethernet, USR-TCP232-410S)
+- Or use the **HACS "Solarman" integration** instead (cloud-based, no hardware needed)
+
+**If unsure:** Try the configuration as-is first. If sensors show "unavailable", you may need a converter or alternative integration method.
+
 ### Step 1: Verify Modbus TCP Access
 Before deploying this configuration, verify that your Deye micro inverter is accessible via Modbus TCP:
 
@@ -81,15 +96,18 @@ You can customize the Balkonkraftwerk card in `ui-lovelace.yaml` to:
 
 ### Sensors Show "Unavailable"
 **Possible Causes:**
-1. Modbus TCP is not enabled on the logger
-2. The IP address is incorrect
-3. Firewall is blocking port 502
-4. The Modbus register addresses are wrong for your specific model
+1. Modbus TCP is not enabled/supported on the logger
+2. Logger requires a Modbus RTU-to-TCP converter (if it only has RS485)
+3. The IP address is incorrect
+4. Firewall is blocking port 502
+5. The Modbus register addresses are wrong for your specific model
 
 **Solutions:**
 - Ping the IP address to verify connectivity: `ping 192.168.178.78`
+- Try accessing the web interface: `http://192.168.178.78`
 - Use a Modbus testing tool (like `mbpoll`) to test the connection
 - Check the Solarman app to see if data is being logged
+- If logger only supports RS485: Add a Modbus RTU-to-TCP converter or use HACS integration
 - Consult the Deye/Solis Modbus protocol documentation for your inverter model
 
 ### Incorrect Values
@@ -99,10 +117,33 @@ If sensors show values but they seem incorrect:
 - Try different register addresses
 
 ### Alternative Integration Methods
-If Modbus TCP doesn't work, consider:
-1. **HACS Integration**: Install "Solarman" or "Deye" integration from HACS
-2. **REST API**: Some loggers expose a REST API on port 8899
-3. **MQTT**: Configure the logger to publish data via MQTT
+If Modbus TCP doesn't work or you need a hardware converter, consider these alternatives:
+
+#### 1. HACS "Solarman" Integration (Recommended if no Modbus TCP)
+**Advantages:** No hardware converter needed, works via cloud API
+**Setup:**
+1. Install HACS if not already installed
+2. Add custom repository: `https://github.com/StephanJoubert/home_assistant_solarman`
+3. Install "Solarman" integration
+4. Configure with your logger serial: `3966925526`
+5. Remove/comment out the Modbus configuration in `modbus.yaml`
+
+#### 2. Modbus RTU-to-TCP Converter
+**Use if:** Logger only has RS485 port
+**Hardware:** Waveshare RS485-to-Ethernet, USR-TCP232-410S, or similar
+**Setup:**
+1. Connect converter to inverter's RS485 port
+2. Configure converter's IP address (e.g., 192.168.178.79)
+3. Update `modbus.yaml` to point to converter's IP
+4. Keep current register configuration
+
+#### 3. REST API
+**Use if:** Logger exposes REST API (some models on port 8899)
+**Note:** Less common, requires custom REST sensors in `configuration.yaml`
+
+#### 4. MQTT
+**Use if:** Logger supports MQTT publishing
+**Note:** Requires MQTT broker and logger configuration
 
 ## Additional Resources
 - [Deye Inverter Modbus Protocol](https://github.com/home-assistant/core/issues/xxxx)
