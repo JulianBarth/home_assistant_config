@@ -93,13 +93,19 @@
       state: >
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
+        {% set computed_target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
 
         {# Hysteresis: multiply by 50 to convert % to scaled SoC units #}
         {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
 
-        {# Stop charging when target is reached plus hysteresis buffer #}
-        {{ (current_soc >= (target_soc + hysteresis)) and charging_active }}
+        {# Stop charging when: #}
+        {# 1. Battery reaches the original target plus hysteresis OR #}
+        {# 2. Battery exceeds the current computed target (prices increased and it's no longer profitable) #}
+        {% set reached_target = current_soc >= (target_soc + hysteresis) %}
+        {% set exceeds_computed_target = current_soc >= (computed_target_soc + hysteresis) %}
+
+        {{ (reached_target or exceeds_computed_target) and charging_active }}
 
 # Computed target SoC sensor
 - sensor:
