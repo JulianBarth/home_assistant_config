@@ -101,9 +101,9 @@
 
         {# Stop charging when: #}
         {# 1. Battery reaches the original target plus hysteresis OR #}
-        {# 2. Battery exceeds the current computed target (prices increased and it's no longer profitable) #}
+        {# 2. Battery exceeds the current computed target (respond immediately when prices increase) #}
         {% set reached_target = current_soc >= (target_soc + hysteresis) %}
-        {% set exceeds_computed_target = current_soc >= (computed_target_soc + hysteresis) %}
+        {% set exceeds_computed_target = current_soc >= computed_target_soc %}
 
         {{ (reached_target or exceeds_computed_target) and charging_active }}
 
