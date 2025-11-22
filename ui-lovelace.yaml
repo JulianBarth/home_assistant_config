@@ -63,13 +63,13 @@ views:
         show_header_toggle: false
         state_color: true
         entities:
-          - entity: sensor.balkonkraftwerk_daily_energy
+          - entity: sensor.inverter_daily_energy
             name: Daily Energy
-          - entity: sensor.deye_grid_voltage
+          - entity: sensor.inverter_grid_voltage
             name: Grid Voltage
-          - entity: sensor.deye_grid_frequency
+          - entity: sensor.inverter_grid_frequency
             name: Grid Frequency
-          - entity: sensor.deye_temperature
+          - entity: sensor.inverter_temperature
             name: Temperature
 
       # --- BATTERY STATUS ---
@@ -242,15 +242,15 @@ views:
         title: Deye Balkonkraftwerk Details
         show_header_toggle: false
         entities:
-          - entity: sensor.deye_ac_power
+          - entity: sensor.inverter_power
             name: AC Power Output
-          - entity: sensor.deye_daily_energy
+          - entity: sensor.inverter_daily_energy
             name: Daily Energy
-          - entity: sensor.deye_grid_voltage
+          - entity: sensor.inverter_grid_voltage
             name: Grid Voltage
-          - entity: sensor.deye_grid_frequency
+          - entity: sensor.inverter_grid_frequency
             name: Grid Frequency
-          - entity: sensor.deye_temperature
+          - entity: sensor.inverter_temperature
             name: Inverter Temperature
 
       # --- BALKONKRAFTWERK TEMPERATURE HISTORY ---
@@ -258,7 +258,7 @@ views:
         title: Balkonkraftwerk Temperature (24h)
         hours_to_show: 24
         entities:
-          - entity: sensor.deye_temperature
+          - entity: sensor.inverter_temperature
             name: Temperature
 
       # --- SOLAR FORECAST ---
@@ -420,7 +420,7 @@ views:
         title: 🌡️ Balkonkraftwerk Temperature (24h)
         hours_to_show: 24
         entities:
-          - entity: sensor.deye_temperature
+          - entity: sensor.inverter_temperature
             name: Temperature
 
       - type: entities

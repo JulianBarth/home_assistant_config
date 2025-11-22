@@ -199,7 +199,7 @@
       device_class: power
       state_class: measurement
       state: >
-        {{ states('sensor.deye_ac_power') | float(default=0) }}
+        {{ states('sensor.inverter_power') | float(default=0) }}
 
     - name: "Balkonkraftwerk Daily Energy"
       unique_id: balkonkraftwerk_daily_energy
@@ -208,13 +208,13 @@
       device_class: energy
       state_class: total_increasing
       state: >
-        {{ states('sensor.deye_daily_energy') | float(default=0) }}
+        {{ states('sensor.inverter_daily_energy') | float(default=0) }}
 
     - name: "Balkonkraftwerk Status"
       unique_id: balkonkraftwerk_status
       icon: mdi:state-machine
       state: >
-        {% set power = states('sensor.deye_ac_power') | float(default=0) %}
+        {% set power = states('sensor.inverter_power') | float(default=0) %}
         {% if power > 10 %}
           Producing
         {% elif power > 0 %}
@@ -228,7 +228,7 @@
       unique_id: balkonkraftwerk_online
       device_class: connectivity
       state: >
-        {% set power = states('sensor.deye_ac_power') %}
+        {% set power = states('sensor.inverter_power') %}
         {{ power not in ['unavailable', 'unknown', 'None'] }}
 
 # Fronius Solar Production Sensors
@@ -250,7 +250,7 @@
       state_class: measurement
       state: >
         {% set fronius = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
-        {% set deye = states('sensor.deye_ac_power') | float(default=0) %}
+        {% set deye = states('sensor.inverter_power') | float(default=0) %}
         {{ (fronius + deye) | round(0) }}
 
     - name: "Fronius Solar Status"
