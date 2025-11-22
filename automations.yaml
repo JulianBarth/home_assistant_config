@@ -9,117 +9,134 @@
       entity_id: input_boolean.manual_battery_charge
       to: "on"
   action:
-    - service: input_number.set_value
-      target:
-        entity_id: input_number.battery_target_soc
+    # Just set the flag - let unified coordinator handle the rest
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
-        value: "{{ states('input_number.manual_charge_target_soc') | float(default=80) }}"
-    - service: script.turn_on
-      target:
-        entity_id: script.stop_limit_discharging
-    - service: script.turn_on
-      target:
-        entity_id: script.start_battery_charging
+        message: "Manual battery charging requested. System will override automation."
+        title: "Battery Control"
 
-- alias: "Manage battery charging based on price and scaled charge level"
-  description: "Automated battery charging based on energy prices, solar forecast, and battery state"
+- alias: "Unified Battery Control Coordinator"
+  description: "Single automation to coordinate all battery control modes"
   trigger:
-    # Trigger on decision sensor changes (computed target is derived from these, so not needed as separate trigger)
+    # Trigger on mode changes
+    - platform: state
+      entity_id: sensor.battery_control_mode
+    # Trigger on SoC changes (for stop conditions)
     - platform: state
       entity_id:
-        - binary_sensor.should_start_charging
         - binary_sensor.should_stop_charging
         - sensor.computed_target_soc
-    # Fallback check every 5 minutes to ensure automation runs even if state changes are missed
+    # Fallback check every 5 minutes
     - platform: time_pattern
       minutes: "/5"
   action:
     - choose:
-        # Start charging if conditions are met
+        # Mode 1: Manual Charging (Highest Priority)
         - conditions:
             - condition: state
-              entity_id: binary_sensor.should_start_charging
-              state: "on"
+              entity_id: sensor.battery_control_mode
+              state: "manual_charging"
+          sequence:
+            - service: input_number.set_value
+              target:
+                entity_id: input_number.battery_target_soc
+              data:
+                value: "{{ states('input_number.manual_charge_target_soc') | float(default=80) }}"
+            - service: script.turn_on
+              target:
+                entity_id: script.forced_full_recharge
+            - service: switch.turn_on
+              target:
+                entity_id: switch.StorCtl_Mod
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.battery_charging_active
+
+        # Mode 2: Car + Battery Charging
+        - conditions:
+            - condition: state
+              entity_id: sensor.battery_control_mode
+              state: "car_and_battery_charging"
+            - condition: state
+              entity_id: binary_sensor.should_stop_charging
+              state: "off"
           sequence:
             - service: input_number.set_value
               target:
                 entity_id: input_number.battery_target_soc
               data:
                 value: "{{ states('sensor.computed_target_soc') | float(default=15) }}"
-
-            # Only stop discharge limiting if car is NOT charging
-            - choose:
-                - conditions:
-                    - condition: template
-                      value_template: >
-                        {% set car_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
-                        {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
-                        {{ not (car_charging and wallbox_not_eco) }}
-                  sequence:
-                    - service: script.turn_on
-                      target:
-                        entity_id: script.stop_limit_discharging
-
             - service: script.turn_on
               target:
-                entity_id: script.start_battery_charging
+                entity_id: script.charge_battery_limit_discharge
 
-        # Stop charging if battery reaches or exceeds the target SoC
+        # Mode 3: Car Charging Only (Limit Discharge)
         - conditions:
+            - condition: state
+              entity_id: sensor.battery_control_mode
+              state: "car_charging_only"
+          sequence:
+            - service: script.turn_on
+              target:
+                entity_id: script.set_dynamic_discharge_limit
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.battery_no_discharging_active
+
+        # Mode 4: Battery Charging Only
+        - conditions:
+            - condition: state
+              entity_id: sensor.battery_control_mode
+              state: "battery_charging"
             - condition: state
               entity_id: binary_sensor.should_stop_charging
-              state: "on"
+              state: "off"
           sequence:
+            - service: input_number.set_value
+              target:
+                entity_id: input_number.battery_target_soc
+              data:
+                value: "{{ states('sensor.computed_target_soc') | float(default=15) }}"
             - service: script.turn_on
               target:
-                entity_id: script.stop_battery_charging
+                entity_id: script.forced_full_recharge
+            - service: switch.turn_on
+              target:
+                entity_id: switch.StorCtl_Mod
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.battery_charging_active
+
+      # Default: Normal Operation or Stop Charging
+      default:
+        - choose:
+            # Check if we should stop charging
+            - conditions:
+                - condition: state
+                  entity_id: binary_sensor.should_stop_charging
+                  state: "on"
+              sequence:
+                - service: script.turn_on
+                  target:
+                    entity_id: script.stop_battery_charging
+                - service: input_boolean.turn_off
+                  target:
+                    entity_id: 
+                      - input_boolean.manual_battery_charge
+                      - input_boolean.battery_no_discharging_active
+          # Normal operation
+          default:
+            - service: script.turn_on
+              target:
+                entity_id: script.set_regular_charge
+            - service: switch.turn_off
+              target:
+                entity_id: switch.StorCtl_Mod
             - service: input_boolean.turn_off
-              entity_id: input_boolean.manual_battery_charge
-
-- alias: "Limit discharging of home battery, if car battery is charged"
-  trigger:
-    - platform: state
-      entity_id:
-        - binary_sensor.car_charging_stable
-        - input_boolean.battery_automation_on
-    - platform: time_pattern
-      minutes: "/5"
-  action:
-    - choose:
-        # Enable discharge limiting when car charging is stable
-        - conditions:
-            - condition: state
-              entity_id: binary_sensor.car_charging_stable
-              state: "on"
-            - condition: state
-              entity_id: input_boolean.battery_no_discharging_active
-              state: "off"
-            - condition: state
-              entity_id: input_boolean.battery_charging_active
-              state: "off"
-            - condition: state
-              entity_id: input_boolean.battery_automation_on
-              state: "on"
-          sequence:
-            - service: script.turn_on
               target:
-                entity_id: script.start_limit_discharging
-
-        # Disable discharge limiting when car charging stops (stable)
-        - conditions:
-            - condition: state
-              entity_id: binary_sensor.car_charging_stable
-              state: "off"
-            - condition: state
-              entity_id: input_boolean.battery_no_discharging_active
-              state: "on"
-            - condition: state
-              entity_id: input_boolean.battery_charging_active
-              state: "off"
-          sequence:
-            - service: script.turn_on
-              target:
-                entity_id: script.stop_limit_discharging
+                entity_id:
+                  - input_boolean.battery_charging_active
+                  - input_boolean.battery_no_discharging_active
 - alias: Solcast update
   description: ""
   trigger:

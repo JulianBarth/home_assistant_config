@@ -196,3 +196,53 @@ stop_limit_discharging:
     - service: input_boolean.turn_off
       target:
         entity_id: input_boolean.battery_no_discharging_active
+
+charge_battery_limit_discharge:
+  alias: "Charge Battery with Limited Discharge"
+  description: "Charge battery while limiting discharge for car charging"
+  sequence:
+    # Set charge rate to 100%, discharge to 10%
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 1000  # 10% discharge limit
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 10000  # 100% charge rate
+    # Enable storage control mode
+    - action: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
+    # Set both flags
+    - service: input_boolean.turn_on
+      target:
+        entity_id: 
+          - input_boolean.battery_charging_active
+          - input_boolean.battery_no_discharging_active
+
+set_dynamic_discharge_limit:
+  alias: "Set Dynamic Discharge Limit"
+  description: "Adjust discharge limit based on grid prices and battery SoC"
+  sequence:
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: >
+          {% set limit_percent = states('sensor.discharge_limit_percentage') | float(default=10) %}
+          {{ (limit_percent * 100) | int }}
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 10000
+    - service: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
