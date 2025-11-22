@@ -78,15 +78,18 @@
         {% set target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
         {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
-
-        {# Hysteresis buffer: divide by 200 to convert % to fractional buffer (e.g., 5% -> 0.025) #}
-        {# We use a scaled comparison here. Target SoC is in %, Current is scaled (100% = 10000) #}
-        {# So Target 80% = 80. Current 80% = 8000. #}
-        {# Let's convert Target to Scaled: Target * 100 #}
-
         {% set hysteresis_buffer = states('input_number.soc_hist') | float(default=5) * 50 %}
 
-        {{ (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive }}
+        {# Check if car is charging - don't interfere with car protection #}
+        {% set car_is_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
+        {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
+        {% set car_protection_active = is_state('input_boolean.battery_no_discharging_active', 'on') %}
+
+        {# Allow starting if: normal conditions met AND (car not charging OR car protection already handled) #}
+        {% set basic_conditions = (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive %}
+        {% set car_safe = not (car_is_charging and wallbox_not_eco and not car_protection_active) %}
+
+        {{ basic_conditions and car_safe }}
 
     - name: "Should Stop Charging"
       unique_id: should_stop_charging
@@ -106,6 +109,48 @@
         {% set exceeds_computed_target = current_soc >= computed_target_soc %}
 
         {{ (reached_target or exceeds_computed_target) and charging_active }}
+
+# Stable car charging detection with hysteresis
+- binary_sensor:
+    - name: "Car Charging Stable"
+      unique_id: car_charging_stable
+      device_class: battery_charging
+      icon: mdi:ev-station
+      state: >
+        {% set is_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
+        {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
+
+        {% if not (is_charging and wallbox_not_eco) %}
+          {{ false }}
+        {% else %}
+          {# Check if state has been stable for 3 minutes #}
+          {% set last_changed = as_timestamp(states.sensor.wattpilot_carconnected.last_changed) %}
+          {% set now_ts = as_timestamp(now()) %}
+          {% set stable_seconds = 180 %}
+          {{ (now_ts - last_changed) >= stable_seconds }}
+        {% endif %}
+
+# Unified status sensor for monitoring
+- sensor:
+    - name: "Battery Control Status"
+      unique_id: battery_control_status
+      icon: mdi:state-machine
+      state: >
+        {% set charging = is_state('input_boolean.battery_charging_active', 'on') %}
+        {% set discharge_limited = is_state('input_boolean.battery_no_discharging_active', 'on') %}
+        {% set car_charging = is_state('binary_sensor.car_charging_stable', 'on') %}
+
+        {% if charging and discharge_limited %}
+          Charging (Car Protection Active)
+        {% elif charging %}
+          Charging (Normal)
+        {% elif discharge_limited %}
+          Discharge Limited (Car Charging)
+        {% elif car_charging %}
+          Car Charging (Waiting for Stable State)
+        {% else %}
+          Normal
+        {% endif %}
 
 # Computed target SoC sensor
 - sensor:
