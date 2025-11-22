@@ -221,7 +221,7 @@ charge_battery_limit_discharge:
     # Set both flags
     - service: input_boolean.turn_on
       target:
-        entity_id: 
+        entity_id:
           - input_boolean.battery_charging_active
           - input_boolean.battery_no_discharging_active
 

@@ -286,7 +286,7 @@
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
         {% set manual_charge = is_state('input_boolean.manual_battery_charge', 'on') %}
         {% set should_charge_during_car = is_state('binary_sensor.should_charge_battery_during_car_charging', 'on') %}
-        
+
         {# Priority order: Manual > Car+Battery > Car Only > Battery > Normal #}
         {% if manual_charge %}
           manual_charging
@@ -314,11 +314,11 @@
         {% set grid_capacity = states('input_number.grid_connection_capacity') | float(default=20000) %}
         {% set current_price_cents = states('sensor.tibber_energy_prices') | float(default=999) * 100 %}
         {% set avg_price = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
-        
+
         {% set total_load = car_power + home_power + battery_charge_rate %}
         {% set load_ok = total_load < (grid_capacity * 0.9) %}
         {% set price_very_low = current_price_cents < (avg_price * 0.8) %}
-        
+
         {{ load_ok and price_very_low }}
 
 # Dynamic discharge limit based on price and battery level
@@ -332,7 +332,7 @@
         {% set avg_price = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) / 100 %}
         {% set battery_soc = states('sensor.batterie_soc') | float(default=0) %}
         {% set car_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
-        
+
         {% if not car_charging %}
           100  {# No car charging: full discharge allowed #}
         {% elif current_price > (avg_price * 1.5) and battery_soc > 60 %}
@@ -353,18 +353,18 @@
         {% set current_price_cents = current_price * 100 %}
         {% set max_price_24h = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
         {% set avg_price_12h = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
-        
+
         {# System parameters #}
         {% set round_trip_efficiency = 0.90 %}
         {% set battery_wear_cost_cents = states('input_number.battery_wear_cost_per_kwh') | float(default=2) %}
         {% set min_spread_factor = 1.20 %}
-        
+
         {# Calculate effective costs #}
         {% set effective_charge_cost = current_price_cents + battery_wear_cost_cents %}
         {% set effective_discharge_value = max_price_24h * round_trip_efficiency %}
-        
+
         {# Profitability conditions #}
         {% set spread_sufficient = effective_discharge_value > (effective_charge_cost * min_spread_factor) %}
         {% set below_average = current_price_cents < (avg_price_12h * 0.85) %}
-        
+
         {{ spread_sufficient and below_average }}

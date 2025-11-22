@@ -121,7 +121,7 @@
                     entity_id: script.stop_battery_charging
                 - service: input_boolean.turn_off
                   target:
-                    entity_id: 
+                    entity_id:
                       - input_boolean.manual_battery_charge
                       - input_boolean.battery_no_discharging_active
           # Normal operation
@@ -193,7 +193,7 @@
   trigger:
     - platform: numeric_state
       entity_id: sensor.reading_energy_battery_soc_scaled
-      below: 750 # Adjust if your SoC is scaled differently (e.g., 7.5% is 750)
+      below: 750  # Adjust if your SoC is scaled differently (e.g., 7.5% is 750)
   action:
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
