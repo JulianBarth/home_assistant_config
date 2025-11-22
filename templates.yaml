@@ -123,11 +123,10 @@
         {% set current_price_cents = current_price_eur * 100 %}
         {% set max_price_24h = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
         {% set is_profitable = max_price_24h > (current_price_cents * 1.15) %}
-        
+
         {# Trend Check: Don't charge if price is falling (next hour is cheaper) #}
         {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
         {% set is_falling = next_price_cents < current_price_cents %}
-        
         {% if not is_profitable %}
           {{ states('input_number.soc_target_default') | float(default=15) }}
         {% elif percentile <= 25 and not is_falling %}
