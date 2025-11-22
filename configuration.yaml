@@ -112,7 +112,7 @@ input_number:
     step: 1000
     unit_of_measurement: "W"
     icon: mdi:transmission-tower
-  
+
   # Battery parameters
   battery_charge_rate_max:
     name: Maximum Battery Charge Rate
@@ -122,7 +122,7 @@ input_number:
     step: 500
     unit_of_measurement: "W"
     icon: mdi:lightning-bolt
-  
+
   # Economic parameters
   battery_wear_cost_per_kwh:
     name: Battery Wear Cost
