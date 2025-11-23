@@ -240,7 +240,22 @@
       device_class: power
       state_class: measurement
       state: >
-        {{ states('sensor.reading_energy_inverter_ac_output') | float(default=0) }}
+        {% set raw = states('sensor.reading_inverter_multiple_raw') %}
+        {% if raw not in ['unknown', 'unavailable'] %}
+          {% set values = raw.split(',') %}
+          {% if values | length > 11 %}
+            {% set sf = values[2] | int %}
+            {% set string1 = values[7] | int %}
+            {% set string2 = values[11] | int %}
+            {# Handle potential negative values or overflow if necessary, though power should be positive #}
+            {% set power_dc = (string1 + string2) * (10 ** sf) %}
+            {{ power_dc | round(0) }}
+          {% else %}
+            0
+          {% endif %}
+        {% else %}
+          0
+        {% endif %}
 
     - name: "Total Solar Power"
       unique_id: total_solar_power
@@ -249,7 +264,7 @@
       device_class: power
       state_class: measurement
       state: >
-        {% set fronius = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
+        {% set fronius = states('sensor.fronius_solar_power') | float(default=0) %}
         {% set deye = states('sensor.inverter_power') | float(default=0) %}
         {{ (fronius + deye) | round(0) }}
 
