@@ -53,16 +53,25 @@
       unit_of_measurement: W
       unique_id: fronius_dc_power_2
 
-    # Diagnostic Sensor (Reads 50 registers from 40265)
-    - name: fronius_diagnostic_raw
+    # Debug: Power Block (40270-40279)
+    - name: fronius_debug_power
       slave: 1
-      address: 40265
-      count: 50
+      address: 40270
+      count: 10
       data_type: custom
-      structure: ">50H"
+      structure: ">10H"
       scan_interval: 60
-      unique_id: fronius_diagnostic_raw
+      unique_id: fronius_debug_power
 
+    # Debug: SF Block (40260-40269)
+    - name: fronius_debug_sf_block
+      slave: 1
+      address: 40260
+      count: 10
+      data_type: custom
+      structure: ">10H"
+      scan_interval: 60
+      unique_id: fronius_debug_sf_block
     - name: reading_inverter_multiple_raw
       slave: 1
       count: 88
