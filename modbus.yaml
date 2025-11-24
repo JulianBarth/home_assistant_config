@@ -44,21 +44,21 @@
     # Targeted Test Sensors (Hypothesis Verification)
     - name: fronius_test_id
       slave: 1
-      address: 40266
+      address: 40273
       data_type: uint16
       scan_interval: 60
       unique_id: fronius_test_id
 
     - name: fronius_test_sf
       slave: 1
-      address: 40270
+      address: 40267
       data_type: int16
       scan_interval: 60
       unique_id: fronius_test_sf
 
     - name: fronius_test_power_1
       slave: 1
-      address: 40277
+      address: 40284
       data_type: uint16
       scan_interval: 20
       unique_id: fronius_test_power_1
