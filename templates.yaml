@@ -240,13 +240,6 @@
       device_class: power
       state_class: measurement
       state: >
-    - name: "Fronius Solar Power"
-      unique_id: fronius_solar_power
-      icon: mdi:solar-power
-      unit_of_measurement: W
-      device_class: power
-      state_class: measurement
-      state: >
         {% set block = states('sensor.fronius_dc_data_block') %}
         {% if block not in ['unknown', 'unavailable'] %}
           {% set values = block.split(',') %}
