@@ -41,24 +41,33 @@
       data_type: uint16
       address: 40361
       scan_interval: 5
-    # Deep Scan Sensors (Re-added)
-    - name: fronius_scan_40200
+    # Deep Scan Sensors (Reduced size to 50 to fix unavailable status)
+    - name: fronius_scan_40250
       slave: 1
-      address: 40200
-      count: 100
+      address: 40250
+      count: 50
       data_type: custom
-      structure: ">100H"
+      structure: ">50H"
       scan_interval: 60
-      unique_id: fronius_scan_40200
+      unique_id: fronius_scan_40250
 
     - name: fronius_scan_40300
       slave: 1
       address: 40300
-      count: 100
+      count: 50
       data_type: custom
-      structure: ">100H"
+      structure: ">50H"
       scan_interval: 60
       unique_id: fronius_scan_40300
+
+    - name: fronius_scan_40350
+      slave: 1
+      address: 40350
+      count: 50
+      data_type: custom
+      structure: ">50H"
+      scan_interval: 60
+      unique_id: fronius_scan_40350
 
     # Individual Sensors (Commented out for scan)
     # - name: fronius_dc_sf
