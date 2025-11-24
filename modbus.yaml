@@ -4,7 +4,7 @@
 # All rights reserved.
 
 # Fronius Symo Gen24 Plus 6.0
-# offset 40131
+# offset 40131 
 - type: tcp
   host: 192.168.178.92  # local via modbus proxy 192.168.178.197
   port: 502
@@ -29,7 +29,7 @@
       data_type: int16
       scan_interval: 5
       unique_id: fronius_ac_power_raw
-    # AC Power Scale Factor (W_SF) - Register 40084
+    # AC Power Scale Factor (W_SF) - Register 40084 (int16)
     - name: fronius_ac_power_sf
       slave: 1
       address: 40084
