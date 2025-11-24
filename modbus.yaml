@@ -27,16 +27,31 @@
       data_type: uint16
       address: 40361
       scan_interval: 5
-    # DC Data Block (Reads 40 registers from 40260)
-    # Contains: SF (40261), Power 1 (40276), Power 2 (40296)
-    - name: fronius_dc_data_block
+    # DC Power Scale Factor (DCW_SF)
+    - name: fronius_dc_sf
       slave: 1
-      address: 40260
-      count: 40
-      data_type: custom
-      structure: ">40H"
-      scan_interval: 20
-      unique_id: fronius_dc_data_block
+      address: 40261
+      data_type: int16
+      scan_interval: 60
+      unique_id: fronius_dc_sf
+
+    # String 1 DC Power (1_DCW)
+    - name: fronius_dc_power_1
+      slave: 1
+      address: 40276
+      data_type: uint16
+      scan_interval: 5
+      unit_of_measurement: W
+      unique_id: fronius_dc_power_1
+
+    # String 2 DC Power (2_DCW)
+    - name: fronius_dc_power_2
+      slave: 1
+      address: 40296
+      data_type: uint16
+      scan_interval: 5
+      unit_of_measurement: W
+      unique_id: fronius_dc_power_2
 
     # - name: reading_inverter_multiple_raw
     #   slave: 1

@@ -233,6 +233,7 @@
 
 # Fronius Solar Production Sensors
 - sensor:
+
     - name: "Fronius Solar Power"
       unique_id: fronius_solar_power
       icon: mdi:solar-power
@@ -240,32 +241,15 @@
       device_class: power
       state_class: measurement
       state: >
-    - name: "Fronius Solar Power"
-      unique_id: fronius_solar_power
-      icon: mdi:solar-power
-      unit_of_measurement: W
-      device_class: power
-      state_class: measurement
-      state: >
-        {% set block = states('sensor.fronius_dc_data_block') %}
-        {% if block not in ['unknown', 'unavailable'] %}
-          {% set values = block.split(',') %}
-          {% if values | length >= 37 %}
-            {# Parse Scale Factor (Index 1) - Handle signed 16-bit #}
-            {% set sf_raw = values[1] | int %}
-            {% set sf = sf_raw if sf_raw < 32768 else sf_raw - 65536 %}
-            
-            {# Parse Power Values #}
-            {% set string1 = values[16] | int %}
-            {% set string2 = values[36] | int %}
-            
-            {% set power_dc = (string1 + string2) * (10 ** sf) %}
-            {{ power_dc | round(0) }}
-          {% else %}
-            0
-          {% endif %}
-        {% else %}
+        {% set sf = states('sensor.fronius_dc_sf') | int(default=0) %}
+        {% set string1 = states('sensor.fronius_dc_power_1') | float(default=0) %}
+        {% set string2 = states('sensor.fronius_dc_power_2') | float(default=0) %}
+        
+        {% if string1 in ['unknown', 'unavailable'] or string2 in ['unknown', 'unavailable'] %}
           0
+        {% else %}
+          {% set power_dc = (string1 + string2) * (10 ** sf) %}
+          {{ power_dc | round(0) }}
         {% endif %}
 
     - name: "Total Solar Power"
