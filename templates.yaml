@@ -241,14 +241,9 @@
       device_class: power
       state_class: measurement
       availability: >
-        {{ true }}
+        {{ states('sensor.reading_energy_inverter_ac_output') not in ['unavailable', 'unknown', 'None'] }}
       state: >
-        {% set ac_power = states('sensor.reading_energy_inverter_ac_output') %}
-        {% if ac_power in ['unknown', 'unavailable'] %}
-          0
-        {% else %}
-          {{ ac_power | float(default=0) | round(0) | max(0) }}
-        {% endif %}
+        {{ states('sensor.reading_energy_inverter_ac_output') | float(default=0) | round(0) | max(0) }}
 
     - name: "Total Solar Power"
       unique_id: total_solar_power
@@ -257,7 +252,8 @@
       device_class: power
       state_class: measurement
       availability: >
-        {{ true }}
+        {{ states('sensor.fronius_solar_power') not in ['unavailable', 'unknown', 'None'] 
+           or states('sensor.inverter_power') not in ['unavailable', 'unknown', 'None'] }}
       state: >
         {% set fronius = states('sensor.fronius_solar_power') | float(default=0) %}
         {% set deye = states('sensor.inverter_power') | float(default=0) %}
@@ -267,7 +263,7 @@
       unique_id: fronius_solar_status
       icon: mdi:state-machine
       availability: >
-        {{ true }}
+        {{ states('sensor.reading_energy_inverter_ac_output') not in ['unavailable', 'unknown', 'None'] }}
       state: >
         {% set power = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
         {% if power > 50 %}
