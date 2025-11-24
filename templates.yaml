@@ -242,12 +242,14 @@
       state_class: measurement
       state: >
         {% set sf = states('sensor.fronius_dc_sf') | int(default=0) %}
-        {% set string1 = states('sensor.fronius_dc_power_1') | float(default=0) %}
-        {% set string2 = states('sensor.fronius_dc_power_2') | float(default=0) %}
-        
-        {% if string1 in ['unknown', 'unavailable'] or string2 in ['unknown', 'unavailable'] %}
+        {% set string1_raw = states('sensor.fronius_dc_power_1') %}
+        {% set string2_raw = states('sensor.fronius_dc_power_2') %}
+
+        {% if string1_raw in ['unknown', 'unavailable'] or string2_raw in ['unknown', 'unavailable'] %}
           0
         {% else %}
+          {% set string1 = string1_raw | float(default=0) %}
+          {% set string2 = string2_raw | float(default=0) %}
           {% set power_dc = (string1 + string2) * (10 ** sf) %}
           {{ power_dc | round(0) }}
         {% endif %}
