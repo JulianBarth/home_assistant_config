@@ -139,12 +139,8 @@
       address: 40358
       command_on: 3
       command_off: 0
-      verify:
     - name: SetHighReserve
       slave: 1
       address: 40360
       command_on: 40
       command_off: 4
-      verify:
-
-      verify:
