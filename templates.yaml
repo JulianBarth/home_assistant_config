@@ -240,10 +240,7 @@
       unit_of_measurement: W
       device_class: power
       state_class: measurement
-      availability: >
-        {{ states('sensor.fronius_dc_power_1') | is_number 
-           and states('sensor.fronius_dc_power_2') | is_number
-           and states('sensor.fronius_dc_sf') | is_number }}
+
       state: >
         {% set dc1_raw = states('sensor.fronius_dc_power_1') | int(default=0) %}
         {% set dc2_raw = states('sensor.fronius_dc_power_2') | int(default=0) %}
@@ -258,6 +255,13 @@
         {% else %}
           {{ ((dc1 + dc2) / (10 ** (sf | abs))) | round(0) | max(0) }}
         {% endif %}
+
+    - name: "Fronius Debug"
+      unique_id: fronius_debug
+      state: >
+        DC1: {{ states('sensor.fronius_dc_power_1') }}
+        DC2: {{ states('sensor.fronius_dc_power_2') }}
+        SF: {{ states('sensor.fronius_dc_sf') }}
 
     - name: "Total Solar Power"
       unique_id: total_solar_power
