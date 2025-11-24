@@ -241,9 +241,9 @@
       device_class: power
       state_class: measurement
       availability: >
-        {{ states('sensor.fronius_dc_power_1') not in ['unavailable', 'unknown', none] 
-           and states('sensor.fronius_dc_power_2') not in ['unavailable', 'unknown', none]
-           and states('sensor.fronius_dc_sf') not in ['unavailable', 'unknown', none] }}
+        {{ states('sensor.fronius_dc_power_1') | is_number 
+           and states('sensor.fronius_dc_power_2') | is_number
+           and states('sensor.fronius_dc_sf') | is_number }}
       state: >
         {% set dc1_raw = states('sensor.fronius_dc_power_1') | int(default=0) %}
         {% set dc2_raw = states('sensor.fronius_dc_power_2') | int(default=0) %}
