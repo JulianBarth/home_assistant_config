@@ -240,12 +240,24 @@
       unit_of_measurement: W
       device_class: power
       state_class: measurement
+      availability: >
+        {% set has_scaled = states('sensor.fronius_ac_power_raw') not in ['unavailable', 'unknown', none] 
+                            and states('sensor.fronius_ac_power_sf') not in ['unavailable', 'unknown', none] %}
+        {% set has_direct = states('sensor.reading_energy_inverter_ac_output') not in ['unavailable', 'unknown', none] %}
+        {{ has_scaled or has_direct }}
       state: >
-        {% set ac_power = states('sensor.reading_energy_inverter_ac_output') %}
-        {% if ac_power in ['unknown', 'unavailable'] %}
-          0
+        {# Try SunSpec Model 103 registers first (40083 + scale factor) #}
+        {% set raw_power = states('sensor.fronius_ac_power_raw') | int(default=none) %}
+        {% set scale_factor = states('sensor.fronius_ac_power_sf') | int(default=none) %}
+        {% if raw_power is not none and scale_factor is not none %}
+          {% if scale_factor >= 0 %}
+            {{ (raw_power * (10 ** scale_factor)) | round(0) | max(0) }}
+          {% else %}
+            {{ (raw_power / (10 ** (scale_factor | abs))) | round(0) | max(0) }}
+          {% endif %}
         {% else %}
-          {{ ac_power | float(default=0) | round(0) | max(0) }}
+          {# Fallback to direct float32 reading from 40091 #}
+          {{ states('sensor.reading_energy_inverter_ac_output') | float(default=0) | round(0) | max(0) }}
         {% endif %}
 
     - name: "Total Solar Power"
@@ -254,6 +266,9 @@
       unit_of_measurement: W
       device_class: power
       state_class: measurement
+      availability: >
+        {{ states('sensor.fronius_solar_power') not in ['unavailable', 'unknown', none] 
+           or states('sensor.inverter_power') not in ['unavailable', 'unknown', none] }}
       state: >
         {% set fronius = states('sensor.fronius_solar_power') | float(default=0) %}
         {% set deye = states('sensor.inverter_power') | float(default=0) %}
@@ -262,8 +277,10 @@
     - name: "Fronius Solar Status"
       unique_id: fronius_solar_status
       icon: mdi:state-machine
+      availability: >
+        {{ states('sensor.fronius_solar_power') not in ['unavailable', 'unknown', none] }}
       state: >
-        {% set power = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
+        {% set power = states('sensor.fronius_solar_power') | float(default=0) %}
         {% if power > 50 %}
           Producing
         {% elif power > 0 %}
@@ -277,8 +294,8 @@
       unique_id: fronius_solar_online
       device_class: connectivity
       state: >
-        {% set power = states('sensor.reading_energy_inverter_ac_output') %}
-        {{ power not in ['unavailable', 'unknown', 'None'] }}
+        {% set power = states('sensor.fronius_solar_power') %}
+        {{ power not in ['unavailable', 'unknown', none] }}
 
 # Unified battery control mode coordinator
 - sensor:

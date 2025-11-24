@@ -22,6 +22,20 @@
       data_type: float32
       address: 40091
       scan_interval: 5
+    # AC Power (W) from Model 103 - Register 40083 (int16, needs scale factor from 40084)
+    - name: fronius_ac_power_raw
+      slave: 1
+      address: 40083
+      data_type: int16
+      scan_interval: 5
+      unique_id: fronius_ac_power_raw
+    # AC Power Scale Factor (W_SF) - Register 40084
+    - name: fronius_ac_power_sf
+      slave: 1
+      address: 40084
+      data_type: int16
+      scan_interval: 60
+      unique_id: fronius_ac_power_sf
     - name: reading_energy_battery_soc_scaled
       slave: 1
       data_type: uint16
