@@ -27,27 +27,27 @@
       data_type: uint16
       address: 40361
       scan_interval: 5
-    # DC Power Scale Factor (DCW_SF)
+    # DC Power Scale Factor (DCW_SF) - Register 40267 (address 40266)
     - name: fronius_dc_sf
       slave: 1
-      address: 40261
+      address: 40266
       data_type: int16
       scan_interval: 60
       unique_id: fronius_dc_sf
 
-    # String 1 DC Power (1_DCW)
+    # String 1 DC Power (1_DCW) - Register 40285 (address 40284)
     - name: fronius_dc_power_1
       slave: 1
-      address: 40276
+      address: 40284
       data_type: uint16
       scan_interval: 20
       unit_of_measurement: W
       unique_id: fronius_dc_power_1
 
-    # String 2 DC Power (2_DCW)
+    # String 2 DC Power (2_DCW) - Register 40305 (address 40304)
     - name: fronius_dc_power_2
       slave: 1
-      address: 40296
+      address: 40304
       data_type: uint16
       scan_interval: 20
       unit_of_measurement: W
