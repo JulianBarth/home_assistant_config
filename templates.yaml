@@ -249,7 +249,7 @@
         {# Try SunSpec Model 103 registers first (40083 + scale factor) #}
         {% set raw_power = states('sensor.fronius_ac_power_raw') | int(default=none) %}
         {% set scale_factor = states('sensor.fronius_ac_power_sf') | int(default=none) %}
-        {% if raw_power not in [none, 0] and scale_factor is not none %}
+        {% if raw_power is not none and scale_factor is not none %}
           {% if scale_factor >= 0 %}
             {{ (raw_power * (10 ** scale_factor)) | round(0) | max(0) }}
           {% else %}
