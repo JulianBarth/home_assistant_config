@@ -240,6 +240,8 @@
       unit_of_measurement: W
       device_class: power
       state_class: measurement
+      availability: >
+        {{ true }}
       state: >
         {% set ac_power = states('sensor.reading_energy_inverter_ac_output') %}
         {% if ac_power in ['unknown', 'unavailable'] %}
@@ -254,6 +256,8 @@
       unit_of_measurement: W
       device_class: power
       state_class: measurement
+      availability: >
+        {{ true }}
       state: >
         {% set fronius = states('sensor.fronius_solar_power') | float(default=0) %}
         {% set deye = states('sensor.inverter_power') | float(default=0) %}
@@ -262,6 +266,8 @@
     - name: "Fronius Solar Status"
       unique_id: fronius_solar_status
       icon: mdi:state-machine
+      availability: >
+        {{ true }}
       state: >
         {% set power = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
         {% if power > 50 %}
