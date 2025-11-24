@@ -241,15 +241,23 @@
       device_class: power
       state_class: measurement
       availability: >
-        {{ states('sensor.fronius_ac_power_raw') not in ['unavailable', 'unknown', none] 
-           and states('sensor.fronius_ac_power_sf') not in ['unavailable', 'unknown', none] }}
+        {% set has_scaled = states('sensor.fronius_ac_power_raw') not in ['unavailable', 'unknown', none] 
+                            and states('sensor.fronius_ac_power_sf') not in ['unavailable', 'unknown', none] %}
+        {% set has_direct = states('sensor.reading_energy_inverter_ac_output') not in ['unavailable', 'unknown', none] %}
+        {{ has_scaled or has_direct }}
       state: >
-        {% set raw_power = states('sensor.fronius_ac_power_raw') | int(default=0) %}
-        {% set scale_factor = states('sensor.fronius_ac_power_sf') | int(default=0) %}
-        {% if scale_factor >= 0 %}
-          {{ (raw_power * (10 ** scale_factor)) | round(0) | max(0) }}
+        {# Try SunSpec Model 103 registers first (40083 + scale factor) #}
+        {% set raw_power = states('sensor.fronius_ac_power_raw') | int(default=none) %}
+        {% set scale_factor = states('sensor.fronius_ac_power_sf') | int(default=none) %}
+        {% if raw_power not in [none, 0] and scale_factor is not none %}
+          {% if scale_factor >= 0 %}
+            {{ (raw_power * (10 ** scale_factor)) | round(0) | max(0) }}
+          {% else %}
+            {{ (raw_power / (10 ** (scale_factor | abs))) | round(0) | max(0) }}
+          {% endif %}
         {% else %}
-          {{ (raw_power / (10 ** (scale_factor | abs))) | round(0) | max(0) }}
+          {# Fallback to direct float32 reading from 40091 #}
+          {{ states('sensor.reading_energy_inverter_ac_output') | float(default=0) | round(0) | max(0) }}
         {% endif %}
 
     - name: "Total Solar Power"
