@@ -41,31 +41,48 @@
       data_type: uint16
       address: 40361
       scan_interval: 5
-    # DC Power Scale Factor (DCW_SF) - Register 40267 (address 40266)
-    - name: fronius_dc_sf
+    # Deep Scan Sensors (Re-added)
+    - name: fronius_scan_40200
       slave: 1
-      address: 40266
-      data_type: int16
+      address: 40200
+      count: 100
+      data_type: custom
+      structure: ">100H"
       scan_interval: 60
-      unique_id: fronius_dc_sf
+      unique_id: fronius_scan_40200
 
-    # String 1 DC Power (1_DCW) - Register 40285 (address 40284)
-    - name: fronius_dc_power_1
+    - name: fronius_scan_40300
       slave: 1
-      address: 40284
-      data_type: uint16
-      scan_interval: 20
-      unit_of_measurement: W
-      unique_id: fronius_dc_power_1
+      address: 40300
+      count: 100
+      data_type: custom
+      structure: ">100H"
+      scan_interval: 60
+      unique_id: fronius_scan_40300
 
-    # String 2 DC Power (2_DCW) - Register 40305 (address 40304)
-    - name: fronius_dc_power_2
-      slave: 1
-      address: 40304
-      data_type: uint16
-      scan_interval: 20
-      unit_of_measurement: W
-      unique_id: fronius_dc_power_2
+    # Individual Sensors (Commented out for scan)
+    # - name: fronius_dc_sf
+    #   slave: 1
+    #   address: 40266
+    #   data_type: int16
+    #   scan_interval: 60
+    #   unique_id: fronius_dc_sf
+
+    # - name: fronius_dc_power_1
+    #   slave: 1
+    #   address: 40284
+    #   data_type: uint16
+    #   scan_interval: 20
+    #   unit_of_measurement: W
+    #   unique_id: fronius_dc_power_1
+
+    # - name: fronius_dc_power_2
+    #   slave: 1
+    #   address: 40304
+    #   data_type: uint16
+    #   scan_interval: 20
+    #   unit_of_measurement: W
+    #   unique_id: fronius_dc_power_2
 
     # - name: reading_inverter_multiple_raw
     #   slave: 1
