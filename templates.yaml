@@ -241,17 +241,11 @@
       device_class: power
       state_class: measurement
       state: >
-        {% set sf = states('sensor.fronius_dc_sf') | int(default=0) %}
-        {% set string1_raw = states('sensor.fronius_dc_power_1') %}
-        {% set string2_raw = states('sensor.fronius_dc_power_2') %}
-
-        {% if string1_raw in ['unknown', 'unavailable'] or string2_raw in ['unknown', 'unavailable'] %}
+        {% set ac_power = states('sensor.reading_energy_inverter_ac_output') %}
+        {% if ac_power in ['unknown', 'unavailable'] %}
           0
         {% else %}
-          {% set string1 = string1_raw | float(default=0) %}
-          {% set string2 = string2_raw | float(default=0) %}
-          {% set power_dc = (string1 + string2) * (10 ** sf) %}
-          {{ power_dc | round(0) }}
+          {{ ac_power | float(default=0) | round(0) | max(0) }}
         {% endif %}
 
     - name: "Total Solar Power"
