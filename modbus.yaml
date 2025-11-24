@@ -52,34 +52,36 @@
       scan_interval: 5
       unit_of_measurement: W
       unique_id: fronius_dc_power_2
-    - name: reading_inverter_multiple_raw
-      slave: 1
-      count: 88
-      address: 40265
-      scan_interval: 10
-      data_type: custom
-      # Registers and positions in custom structure
-      # 0  DCA_SF
-      # 1  DCV_SF
-      # 2. DCW_SF DC Energy scaling factor
-      # 3. DCWH_SF
-      # 4  1_ID
-      # 5  1_DCA
-      # 6. 1_DCV
-      # 7. 1_DCW Energy string 1
-      # 8  2_ID
-      # 9. 2_DCA
-      # 10 2_DCV
-      # 11 2_DCW Energy string 2
-      # 12 3_ID
-      # 13 3_DCA
-      # 14 3_DCV
-      # 15 3_DCW Energy to battery, charging
-      # 16 4_ID
-      # 17 4_DCA
-      # 18 4_DCV
-      # 19 4_DCW Energy from battery, discharging
-      structure: ">hhhh8x H16xHHH16x H16xHHH16x H16xHHH16x H16xHHH16x"
+
+    # - name: reading_inverter_multiple_raw
+    #   slave: 1
+    #   count: 88
+    #   address: 40265
+    #   scan_interval: 10
+    #   data_type: custom
+    #   # Registers and positions in custom structure
+    #   # 0  DCA_SF
+    #   # 1  DCV_SF
+    #   # 2. DCW_SF DC Energy scaling factor
+    #   # 3. DCWH_SF
+    #   # 4  1_ID
+    #   # 5  1_DCA
+    #   # 6. 1_DCV
+    #   # 7. 1_DCW Energy string 1
+    #   # 8  2_ID
+    #   # 9. 2_DCA
+    #   # 10 2_DCV
+    #   # 11 2_DCW Energy string 2
+    #   # 12 3_ID
+    #   # 13 3_DCA
+    #   # 14 3_DCV
+    #   # 15 3_DCW Energy to battery, charging
+    #   # 16 4_ID
+    #   # 17 4_DCA
+    #   # 18 4_DCV
+    #   # 19 4_DCW Energy from battery, discharging
+    #   structure: ">hhhh8x H16xHHH16x H16xHHH16x H16xHHH16x H16xHHH16x"
+
     # WChaMax
     - name: reading_max_allowed_discharge_power
       slave: 1
