@@ -2,8 +2,13 @@
 #
 # Copyright (c) 2024, Julian Bartholomeyczik
 # All rights reserved.
+
 # Loads default set of integrations. Do not remove.
 default_config:
+
+# Explicitly disable rpi_power integration to prevent errors
+# The rpi_power integration is not compatible with this system
+rpi_power:
 
 # Load frontend themes from the themes folder
 frontend:
