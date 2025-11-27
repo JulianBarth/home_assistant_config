@@ -119,7 +119,10 @@ These sensors connect sources to final consumers.
 ### Pre-Deployment Checks
 1. ✅ YAML syntax validated for `ui-lovelace.yaml`
 2. ✅ Configuration structure follows Sankey chart documentation
-3. ✅ All referenced sensors exist in `templates.yaml`
+3. ✅ All referenced sensors verified to exist in `templates.yaml`:
+   - Primary sources: `sensor.total_solar_power`, `sensor.grid_power`, `sensor.battery_power`
+   - Flow sensors: `sensor.solar_to_house`, `sensor.solar_to_battery`, `sensor.solar_to_grid`, `sensor.grid_to_house`, `sensor.grid_to_battery`, `sensor.battery_to_house`
+   - Consumers: `sensor.house_consumption`
 
 ### Post-Deployment Validation Required
 The following should be verified after deploying these changes:
