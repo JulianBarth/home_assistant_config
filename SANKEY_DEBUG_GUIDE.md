@@ -111,7 +111,7 @@ Configuration errors sometimes persist in browser cache:
 
 | Status | Meaning | Action Required |
 |--------|---------|-----------------|
-| Chart not rendering | Configuration error | See [Configuration Error section](#-if-sankey-chart-shows-configuration-error-or-doesnt-render) above |
+| Chart not rendering | Configuration error | See [Configuration Error section](#if-sankey-chart-shows-configuration-error-or-doesnt-render) above |
 | ✅ OK | All entities working | None - Sankey should display correctly |
 | ❌ ERROR | Some entities unavailable | Check error panel above for details |
 | 10/10 Available | All entities operational | None |
@@ -380,7 +380,7 @@ automation:
 
 ### Configuration Errors vs Entity Issues
 
-- **Configuration Error** (Chart doesn't render at all): See [⚠️ Configuration Error section](#-if-sankey-chart-shows-configuration-error-or-doesnt-render) at the top of this guide
+- **Configuration Error** (Chart doesn't render at all): See [⚠️ Configuration Error section](#if-sankey-chart-shows-configuration-error-or-doesnt-render) at the top of this guide
 - **Entity Issues** (Chart renders but shows wrong/missing data): Use the debug panels as described in this guide
 
 ### If Issues Persist
