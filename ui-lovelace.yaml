@@ -174,7 +174,7 @@ views:
       - type: custom:sankey-chart
         title: 🔋 Energy Flow Visualization
         height: 600
-        wide: true
+        # wide: true  <-- Removed to test layout
         show_names: true
         show_values: true
         show_units: true
@@ -224,30 +224,16 @@ views:
               - entity_id: sensor.house_consumption
                 name: House
                 color: '#FF5722'
-        energy_date_selection: false
+        # energy_date_selection: false <-- Removed potential error source
         min_box_height: 3
         min_box_distance: 5
 
-      # --- DEBUG: MINIMAL SANKEY CHART ---
+      # --- DEBUG: AUTOCONFIG CHART ---
+      # This tests if the plugin works at all by letting it auto-detect entities
       - type: custom:sankey-chart
-        title: 🛠️ Debug Minimal Chart
-        height: 200
-        wide: false
-        show_names: true
-        sections:
-          - entities:
-              - entity_id: sensor.sankey_battery_discharge
-                name: Battery
-                children:
-                  - sensor.battery_to_house
-          - entities:
-              - entity_id: sensor.battery_to_house
-                name: Battery -> House
-                children:
-                  - sensor.house_consumption
-          - entities:
-              - entity_id: sensor.house_consumption
-                name: House
+        title: 🛠️ Debug Autoconfig
+        autoconfig:
+          print_yaml: false
 
       # --- SANKEY CHART DEBUG PANEL ---
       - type: conditional
