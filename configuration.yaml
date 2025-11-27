@@ -14,7 +14,7 @@ frontend:
 lovelace:
   mode: yaml
   resources:
-    - url: https://unpkg.com/ha-sankey-chart@1.2.0/dist/ha-sankey-chart.js
+    - url: /local/ha-sankey-chart.js
       type: module
   dashboards:
     lovelace-battery:
