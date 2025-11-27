@@ -73,6 +73,10 @@ The system now includes a comprehensive Lovelace dashboard (`ui-lovelace.yaml`) 
 
 ### Energy Flow (NEW!)
 - **Interactive Sankey chart** showing real-time energy flows
+- **Built-in debugging tools** to diagnose display issues
+  - Auto-appearing error panel when entities are unavailable
+  - Entity status monitoring (10 critical sensors)
+  - Detailed diagnostics with fix recommendations
 - Visual representation of power distribution between:
   - Solar panels (Fronius + Balkonkraftwerk)
   - Battery storage
@@ -83,7 +87,10 @@ The system now includes a comprehensive Lovelace dashboard (`ui-lovelace.yaml`) 
 - Historical energy flow graphs
 - Detailed flow tracking for all energy paths
 
-**See [ENERGY_FLOW_SETUP.md](ENERGY_FLOW_SETUP.md) for complete energy flow visualization documentation**
+**Documentation:**
+- [ENERGY_FLOW_SETUP.md](ENERGY_FLOW_SETUP.md) - Complete setup guide
+- [SANKEY_INSTALLATION.md](SANKEY_INSTALLATION.md) - Installation instructions
+- [SANKEY_DEBUG_GUIDE.md](SANKEY_DEBUG_GUIDE.md) - **Debugging guide for troubleshooting** ⭐
 
 ### Charging Logic
 - Charging decision indicators (should start/stop charging)
