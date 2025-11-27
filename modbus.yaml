@@ -157,3 +157,23 @@
       address: 40360
       command_on: 40
       command_off: 4
+
+# Deye Micro Inverter - Daily Energy sensor
+# Note: Other Deye sensors (voltage, frequency, temperature) are configured elsewhere
+- type: tcp
+  host: 192.168.178.78
+  port: 502
+  name: deye_micro
+  sensors:
+    # Daily Energy production in kWh
+    - name: inverter_daily_energy
+      slave: 1
+      address: 60
+      data_type: uint16
+      scale: 0.1
+      scan_interval: 300
+      unit_of_measurement: 'kWh'
+      device_class: energy
+      state_class: total_increasing
+      input_type: holding
+      unique_id: deye_daily_energy
