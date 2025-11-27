@@ -569,11 +569,14 @@
         {{ states('sensor.wattpilot_charging_power') | float(default=0) | round(0) }}
 
 # Sankey Chart Debug Sensors
+# NOTE: Entity list is repeated in state and each attribute due to Home Assistant template limitations.
+# When updating entities, update ALL occurrences of the list below.
 - sensor:
     - name: "Sankey Entity Check"
       unique_id: sankey_entity_check
       icon: mdi:chart-sankey-variant
       state: >
+        {# ENTITY LIST - Keep in sync across all attributes #}
         {% set entities = [
           'sensor.total_solar_power',
           'sensor.grid_power',
@@ -586,12 +589,13 @@
           'sensor.battery_to_house',
           'sensor.house_consumption'
         ] %}
+        {% set numeric_pattern = '^-?\\d+\\.?\\d*$' %}
         {% set unavailable = [] %}
         {% set invalid = [] %}
         {% for entity in entities %}
           {% if states(entity) in ['unavailable', 'unknown', 'none', None] %}
             {% set unavailable = unavailable + [entity] %}
-          {% elif not (states(entity) | regex_match('^-?\d+\.?\d*$')) %}
+          {% elif not (states(entity) | regex_match(numeric_pattern)) %}
             {% set invalid = invalid + [entity] %}
           {% endif %}
         {% endfor %}
@@ -602,6 +606,7 @@
         {% endif %}
       attributes:
         unavailable_entities: >
+          {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
             'sensor.total_solar_power',
             'sensor.grid_power',
@@ -622,6 +627,7 @@
           {% endfor %}
           {{ unavailable }}
         invalid_entities: >
+          {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
             'sensor.total_solar_power',
             'sensor.grid_power',
@@ -634,10 +640,11 @@
             'sensor.battery_to_house',
             'sensor.house_consumption'
           ] %}
+          {% set numeric_pattern = '^-?\\d+\\.?\\d*$' %}
           {% set invalid = [] %}
           {% for entity in entities %}
             {% if states(entity) not in ['unavailable', 'unknown', 'none', None] %}
-              {% if not (states(entity) | regex_match('^-?\d+\.?\d*$')) %}
+              {% if not (states(entity) | regex_match(numeric_pattern)) %}
                 {% set invalid = invalid + [entity] %}
               {% endif %}
             {% endif %}
@@ -645,6 +652,7 @@
           {{ invalid }}
         total_entities: 10
         available_count: >
+          {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
             'sensor.total_solar_power',
             'sensor.grid_power',

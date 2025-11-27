@@ -274,7 +274,7 @@ views:
             entity: sensor.sankey_entity_check
             attribute: available_count
             name: Available Entities
-            suffix: " / 10"
+            suffix: " / 10"  # Note: Hardcoded - update if total_entities changes
           - entity: sensor.sankey_debug_info
             name: Diagnosis
           - type: divider
