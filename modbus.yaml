@@ -171,8 +171,8 @@
       address: 60
       data_type: uint16
       scale: 0.1
-      scan_interval: 30
-      unit_of_measurement: kWh
+      scan_interval: 300
+      unit_of_measurement: 'kWh'
       device_class: energy
       state_class: total_increasing
       input_type: holding
