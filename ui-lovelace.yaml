@@ -6,48 +6,7 @@
 # Battery Management Dashboard
 title: Battery Management System
 views:
-  - title: Sankey Debug
-    path: sankey_debug
-    icon: mdi:bug
-    cards:
-      - type: entities
-        title: 🔍 Sensor Check
-        entities:
-          - entity: sensor.sankey_battery_discharge
-            name: Battery Discharge (Wrapper)
-          - entity: sensor.sankey_grid_import
-            name: Grid Import (Wrapper)
-          - entity: sensor.house_consumption
-            name: House Consumption
-          - entity: sensor.sankey_entity_check
-            name: Debug Status
 
-      - type: custom:sankey-chart
-        title: 1. Autoconfig (Simplest)
-        autoconfig:
-          print_yaml: false
-      
-      - type: custom:sankey-chart
-        title: 2. No Connections (Entities Only)
-        sections:
-          - entities:
-              - entity_id: sensor.sankey_battery_discharge
-                name: Battery
-          - entities:
-              - entity_id: sensor.house_consumption
-                name: House
-
-      - type: custom:sankey-chart
-        title: 3. Minimal Flow
-        sections:
-          - entities:
-              - entity_id: sensor.sankey_battery_discharge
-                name: Battery
-                children:
-                  - sensor.house_consumption
-          - entities:
-              - entity_id: sensor.house_consumption
-                name: House
 
   - title: Overview
     path: overview
@@ -214,55 +173,63 @@ views:
     cards:
       # --- MAIN ENERGY FLOW SANKEY CHART ---
       # Shows energy flow from sources through system to consumption
-      # --- MAIN ENERGY FLOW SANKEY CHART (MINIMAL DEBUG) ---
+      # --- MAIN ENERGY FLOW SANKEY CHART ---
+      # Shows energy flow from sources through system to consumption
       - type: custom:sankey-chart
-        title: 🔋 Energy Flow (Debug Mode)
-        height: 300
+        title: 🔋 Energy Flow Visualization
+        height: 600
+        wide: true
         show_names: true
         show_values: true
+        show_units: true
         sections:
+          # Primary Energy Sources (Section 1)
           - entities:
+              - entity_id: sensor.total_solar_power
+                name: Solar Production
+                color: '#FFB300'
+                children:
+                  - sensor.solar_to_house
+                  - sensor.solar_to_battery
+                  - sensor.solar_to_grid
+              - entity_id: sensor.sankey_grid_import
+                name: Grid
+                color: '#2196F3'
+                children:
+                  - sensor.grid_to_house
+                  - sensor.grid_to_battery
               - entity_id: sensor.sankey_battery_discharge
                 name: Battery
+                color: '#4CAF50'
+                children:
+                  - sensor.battery_to_house
+          # Energy Distribution (Section 2)
+          - entities:
+              - entity_id: sensor.solar_to_house
+                name: Solar → House
                 children:
                   - sensor.house_consumption
+              - entity_id: sensor.solar_to_battery
+                name: Solar → Battery
+              - entity_id: sensor.solar_to_grid
+                name: Solar → Grid
+              - entity_id: sensor.grid_to_house
+                name: Grid → House
+                children:
+                  - sensor.house_consumption
+              - entity_id: sensor.grid_to_battery
+                name: Grid → Battery
+              - entity_id: sensor.battery_to_house
+                name: Battery → House
+                children:
+                  - sensor.house_consumption
+          # Final Consumption (Section 3)
           - entities:
               - entity_id: sensor.house_consumption
                 name: House
-
-      # --- SANKEY CHART DEBUG PANEL ---
-      - type: conditional
-        conditions:
-          - entity: sensor.sankey_entity_check
-            state: ERROR
-        card:
-          type: markdown
-          content: |
-            ## ⚠️ Sankey Chart Debug Information
-            
-            **Status:** {{ states('sensor.sankey_entity_check') }}
-            
-            **Available Entities:** {{ state_attr('sensor.sankey_entity_check', 'available_count') }}/{{ state_attr('sensor.sankey_entity_check', 'total_entities') }}
-            
-            {% if state_attr('sensor.sankey_entity_check', 'unavailable_entities') | length > 0 %}
-            ### 🔴 Unavailable Entities:
-            {% for entity in state_attr('sensor.sankey_entity_check', 'unavailable_entities') %}
-            - `{{ entity }}` - State: {{ states(entity) }}
-            {% endfor %}
-            {% endif %}
-            
-            {% if state_attr('sensor.sankey_entity_check', 'invalid_entities') | length > 0 %}
-            ### 🟡 Invalid Value Entities:
-            {% for entity in state_attr('sensor.sankey_entity_check', 'invalid_entities') %}
-            - `{{ entity }}` - Value: {{ states(entity) }}
-            {% endfor %}
-            {% endif %}
-            
-            ### 💡 Recommendations:
-            {{ state_attr('sensor.sankey_debug_info', 'recommendations') }}
-            
-            ---
-            *This panel appears automatically when issues are detected*
+                color: '#FF5722'
+        min_box_height: 3
+        min_box_distance: 5
 
       # --- SANKEY DEBUG STATUS (Always Visible) ---
       - type: entities
