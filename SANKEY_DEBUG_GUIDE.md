@@ -65,7 +65,7 @@ Use Developer Tools to check if all required entities exist:
    - Missing colons after keys
    - Entity IDs don't match actual sensors
    - Incorrect `children:` references
-   - Missing `entity_id:` vs `entity:` confusion
+   - Using wrong property name (`entity:` instead of `entity_id:` or vice versa)
 
 3. **Review Sankey Chart Structure** in `ui-lovelace.yaml`:
    ```yaml
