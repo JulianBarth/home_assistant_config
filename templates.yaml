@@ -394,3 +394,176 @@
         {% set below_average = current_price_cents < (avg_price_12h * 0.85) %}
 
         {{ spread_sufficient and below_average }}
+
+# Energy Flow Sensors for Visualization
+- sensor:
+    - name: "Grid Power"
+      unique_id: grid_power_flow
+      icon: mdi:transmission-tower
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set main_meter = states('sensor.reading_energy_main_meter') | float(default=0) %}
+        {{ main_meter | round(0) }}
+
+    - name: "Battery Power"
+      unique_id: battery_power_flow
+      icon: mdi:battery
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set charging_state = states('sensor.charging_state') %}
+        {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
+        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
+        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
+        
+        {# Estimate battery power based on energy balance #}
+        {# Positive = charging, Negative = discharging #}
+        {% if charging_state == 'CHARGING' %}
+          {% set battery_power = (grid_power + solar_power - ac_output) | abs %}
+          {{ battery_power | round(0) }}
+        {% elif charging_state == 'DISCHARGING' %}
+          {% set battery_power = -(ac_output - solar_power - grid_power) %}
+          {{ battery_power | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+    - name: "House Consumption"
+      unique_id: house_consumption_power
+      icon: mdi:home
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
+        {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
+        
+        {# House consumption = Total AC output - Wallbox consumption #}
+        {% set house_consumption = ac_output - wallbox_power %}
+        {{ [house_consumption, 0] | max | round(0) }}
+
+    - name: "Solar To Battery"
+      unique_id: solar_to_battery_flow
+      icon: mdi:solar-power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set charging_state = states('sensor.charging_state') %}
+        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
+        
+        {% if charging_state == 'CHARGING' %}
+          {# Solar available for battery charging #}
+          {{ [solar_power, 0] | max | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+    - name: "Solar To House"
+      unique_id: solar_to_house_flow
+      icon: mdi:solar-power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set charging_state = states('sensor.charging_state') %}
+        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
+        {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
+        {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
+        
+        {# Calculate house consumption to avoid circular dependency #}
+        {% set house_consumption = [ac_output - wallbox_power, 0] | max %}
+        
+        {% if charging_state in ['DISCHARGING', 'HOLDING', 'OFF'] %}
+          {# Solar goes to house consumption - take minimum of both #}
+          {{ [solar_power, house_consumption] | min | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+    - name: "Solar To Grid"
+      unique_id: solar_to_grid_flow
+      icon: mdi:solar-power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
+        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
+        
+        {% if grid_power < 0 %}
+          {# Negative grid = export #}
+          {{ (grid_power | abs) | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+    - name: "Battery To House"
+      unique_id: battery_to_house_flow
+      icon: mdi:battery-arrow-up
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set charging_state = states('sensor.charging_state') %}
+        
+        {# Calculate battery power directly to avoid circular dependency #}
+        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
+        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
+        {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
+        
+        {% if charging_state == 'DISCHARGING' %}
+          {# Battery power when discharging #}
+          {% set battery_power = -(ac_output - solar_power - grid_power) %}
+          {{ (battery_power | abs) | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+    - name: "Grid To House"
+      unique_id: grid_to_house_flow
+      icon: mdi:transmission-tower
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
+        {% set charging_state = states('sensor.charging_state') %}
+        
+        {% if grid_power > 0 and charging_state != 'CHARGING' %}
+          {# Positive grid = import for house #}
+          {{ grid_power | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+    - name: "Grid To Battery"
+      unique_id: grid_to_battery_flow
+      icon: mdi:transmission-tower
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
+        {% set charging_state = states('sensor.charging_state') %}
+        
+        {% if grid_power > 0 and charging_state == 'CHARGING' %}
+          {# Grid charging battery #}
+          {{ grid_power | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+    - name: "Wallbox Power"
+      unique_id: wallbox_power_consumption
+      icon: mdi:ev-station
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {# Wrap Wattpilot sensor for consistency with other flow sensors #}
+        {# Allows for future processing (e.g., filtering, smoothing) if needed #}
+        {{ states('sensor.wattpilot_charging_power') | float(default=0) | round(0) }}
