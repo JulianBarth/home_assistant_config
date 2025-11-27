@@ -1,6 +1,104 @@
 # Sankey Chart Debug Guide
 
-## Quick Reference
+## ⚠️ If Sankey Chart Shows "Configuration Error" or Doesn't Render
+
+If you see a "Configuration Error" (Konfigurationsfehler in German UI) or the Sankey chart doesn't appear at all, the debug panels below the chart may not be accessible. Follow these steps instead:
+
+### Step 1: Check Browser Console
+
+1. **Open Browser Developer Tools**
+   - Press **F12** (Windows/Linux) or **Cmd+Option+I** (Mac)
+   - Or right-click → "Inspect" → Go to "Console" tab
+
+2. **Look for Error Messages**
+   - Red error messages about "sankey-chart"
+   - YAML configuration errors
+   - Missing entity errors
+   - Custom element errors
+
+3. **Common Configuration Errors**:
+   - `Cannot read properties of undefined` → Missing or incorrect entity references.
+   - `Custom element doesn't exist: sankey-chart` → Card not installed/loaded (see [SANKEY_INSTALLATION.md](SANKEY_INSTALLATION.md)).
+   - `Entity not found` → Referenced sensor doesn't exist.
+   - YAML syntax errors → Check indentation and structure in `ui-lovelace.yaml`.
+
+### Step 2: Access Debug Panels Directly
+
+Even if the Sankey chart doesn't render, the debug panels should still be visible below it:
+
+1. **Navigate to Energy Flow tab** (chart-sankey icon in sidebar)
+2. **Scroll down** - Even if chart area is blank/empty, keep scrolling
+3. **Look for "🔍 Sankey Chart Status" panel** - It should still appear below
+4. **Check entity states** - This shows if the problem is configuration or entity availability
+
+### Step 3: Verify Entity Availability
+
+Use Developer Tools to check if all required entities exist:
+
+1. Go to **Developer Tools → States**
+2. Search for and verify these entities exist:
+   - `sensor.total_solar_power`
+   - `sensor.grid_power`
+   - `sensor.battery_power`
+   - `sensor.solar_to_house`
+   - `sensor.solar_to_battery`
+   - `sensor.solar_to_grid`
+   - `sensor.grid_to_house`
+   - `sensor.grid_to_battery`
+   - `sensor.battery_to_house`
+   - `sensor.house_consumption`
+
+3. If any entities are **missing** (not found in States):
+   - Check `templates.yaml` has all sensor definitions
+   - Reload template entities: **Developer Tools → YAML → Reload Template Entities**
+   - Check Home Assistant logs for template errors
+
+### Step 4: Validate YAML Configuration
+
+1. **Check YAML Syntax**
+   - Go to **Developer Tools → YAML → Check Configuration**
+   - Look for any configuration errors
+   - Pay attention to `ui-lovelace.yaml` errors
+
+2. **Common YAML Issues in Sankey Chart**:
+   - Incorrect indentation (must use 2 spaces, not tabs)
+   - Missing colons after keys
+   - Entity IDs don't match actual sensors
+   - Incorrect `children:` references
+   - Using wrong property name (`entity:` instead of `entity_id:` or vice versa)
+
+3. **Review Sankey Chart Structure** in `ui-lovelace.yaml`:
+   ```yaml
+   - type: custom:sankey-chart
+     sections:
+       - entities:
+           - entity_id: sensor.name  # Must match exactly
+             children:
+               - sensor.child_name  # Must exist
+   ```
+
+### Step 5: Hard Refresh and Clear Cache
+
+Configuration errors sometimes persist in browser cache:
+
+1. **Hard Refresh**:
+   - **Chrome/Edge**: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac)
+   - **Firefox**: Ctrl+Shift+R or Cmd+Shift+R
+   - **Safari**: Cmd+Option+R
+
+2. **Clear Browser Cache**:
+   - Chrome/Edge: Ctrl+Shift+Delete
+   - Firefox: Ctrl+Shift+Delete
+   - Safari: Cmd+Option+E
+   - Select "Cached images and files"
+   - Clear data and reload
+
+3. **Restart Home Assistant** if changes made to YAML files:
+   - Settings → System → Restart
+
+---
+
+## Quick Reference (For Working Sankey Charts)
 
 ### How to Check Sankey Status
 
@@ -13,10 +111,13 @@
 
 | Status | Meaning | Action Required |
 |--------|---------|-----------------|
+| Chart not rendering | Configuration error | See [Configuration Error section](#if-sankey-chart-shows-configuration-error-or-doesnt-render) above |
 | ✅ OK | All entities working | None - Sankey should display correctly |
 | ❌ ERROR | Some entities unavailable | Check error panel above for details |
 | 10/10 Available | All entities operational | None |
 | 7/10 Available | 3 entities not working | Fix unavailable entities |
+
+**Note**: If you see "Configuration Error" or the chart doesn't appear at all, scroll to the top of this guide for specific troubleshooting steps.
 
 ## Debug Panels Overview
 
@@ -277,13 +378,20 @@ automation:
 
 ## Support
 
-If issues persist after following this guide:
+### Configuration Errors vs Entity Issues
 
-1. Check Home Assistant logs
-2. Verify YAML syntax with YAML validator
+- **Configuration Error** (Chart doesn't render at all): See [⚠️ Configuration Error section](#if-sankey-chart-shows-configuration-error-or-doesnt-render) at the top of this guide
+- **Entity Issues** (Chart renders but shows wrong/missing data): Use the debug panels as described in this guide
+
+### If Issues Persist
+
+After following this guide:
+
+1. Check Home Assistant logs (Settings → System → Logs)
+2. Verify YAML syntax with YAML validator (Developer Tools → YAML)
 3. Ensure Home Assistant is up to date
-4. Review [SANKEY_INSTALLATION.md](SANKEY_INSTALLATION.md)
-5. Check [ENERGY_FLOW_SETUP.md](ENERGY_FLOW_SETUP.md)
+4. Review [SANKEY_INSTALLATION.md](SANKEY_INSTALLATION.md) for installation issues
+5. Check [ENERGY_FLOW_SETUP.md](ENERGY_FLOW_SETUP.md) for setup guidance
 
 ---
 

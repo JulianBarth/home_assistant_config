@@ -593,7 +593,7 @@
         {% set unavailable = [] %}
         {% set invalid = [] %}
         {% for entity in entities %}
-          {% if states(entity) in ['unavailable', 'unknown', 'none', None] %}
+          {% if states(entity) in ['unavailable', 'unknown', 'none', 'None', None, ''] %}
             {% set unavailable = unavailable + [entity] %}
           {% elif not (states(entity) | regex_match(numeric_pattern)) %}
             {% set invalid = invalid + [entity] %}
@@ -621,7 +621,7 @@
           ] %}
           {% set unavailable = [] %}
           {% for entity in entities %}
-            {% if states(entity) in ['unavailable', 'unknown', 'none', None] %}
+            {% if states(entity) in ['unavailable', 'unknown', 'none', 'None', None, ''] %}
               {% set unavailable = unavailable + [entity] %}
             {% endif %}
           {% endfor %}
@@ -643,7 +643,7 @@
           {% set numeric_pattern = '^-?\\d+\\.?\\d*$' %}
           {% set invalid = [] %}
           {% for entity in entities %}
-            {% if states(entity) not in ['unavailable', 'unknown', 'none', None] %}
+            {% if states(entity) not in ['unavailable', 'unknown', 'none', 'None', None, ''] %}
               {% if not (states(entity) | regex_match(numeric_pattern)) %}
                 {% set invalid = invalid + [entity] %}
               {% endif %}
@@ -681,7 +681,7 @@
           ] %}
           {% set available = 0 %}
           {% for entity in entities %}
-            {% if states(entity) not in ['unavailable', 'unknown', 'none', None] %}
+            {% if states(entity) not in ['unavailable', 'unknown', 'none', 'None', None, ''] %}
               {% set available = available + 1 %}
             {% endif %}
           {% endfor %}
