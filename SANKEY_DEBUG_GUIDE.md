@@ -2,7 +2,7 @@
 
 ## ⚠️ If Sankey Chart Shows "Configuration Error" or Doesn't Render
 
-If you see a "Configuration Error" (Konfigurationsfehler) or the Sankey chart doesn't appear at all, the debug panels below the chart may not be accessible. Follow these steps instead:
+If you see a "Configuration Error" (Konfigurationsfehler in German UI) or the Sankey chart doesn't appear at all, the debug panels below the chart may not be accessible. Follow these steps instead:
 
 ### Step 1: Check Browser Console
 
@@ -17,10 +17,10 @@ If you see a "Configuration Error" (Konfigurationsfehler) or the Sankey chart do
    - Custom element errors
 
 3. **Common Configuration Errors**:
-   - `Cannot read properties of undefined` → Missing or incorrect entity references
-   - `Custom element doesn't exist: sankey-chart` → Card not installed/loaded (see [SANKEY_INSTALLATION.md](SANKEY_INSTALLATION.md))
-   - `Entity not found` → Referenced sensor doesn't exist
-   - YAML syntax errors → Check indentation and structure in `ui-lovelace.yaml`
+   - `Cannot read properties of undefined` → Missing or incorrect entity references.
+   - `Custom element doesn't exist: sankey-chart` → Card not installed/loaded (see [SANKEY_INSTALLATION.md](SANKEY_INSTALLATION.md)).
+   - `Entity not found` → Referenced sensor doesn't exist.
+   - YAML syntax errors → Check indentation and structure in `ui-lovelace.yaml`.
 
 ### Step 2: Access Debug Panels Directly
 
@@ -111,7 +111,7 @@ Configuration errors sometimes persist in browser cache:
 
 | Status | Meaning | Action Required |
 |--------|---------|-----------------|
-| Chart not rendering | Configuration error | See [Configuration Error section](#️-if-sankey-chart-shows-configuration-error-or-doesnt-render) above |
+| Chart not rendering | Configuration error | See [Configuration Error section](#-if-sankey-chart-shows-configuration-error-or-doesnt-render) above |
 | ✅ OK | All entities working | None - Sankey should display correctly |
 | ❌ ERROR | Some entities unavailable | Check error panel above for details |
 | 10/10 Available | All entities operational | None |
@@ -380,7 +380,7 @@ automation:
 
 ### Configuration Errors vs Entity Issues
 
-- **Configuration Error** (Chart doesn't render at all): See [⚠️ Configuration Error section](#️-if-sankey-chart-shows-configuration-error-or-doesnt-render) at the top of this guide
+- **Configuration Error** (Chart doesn't render at all): See [⚠️ Configuration Error section](#-if-sankey-chart-shows-configuration-error-or-doesnt-render) at the top of this guide
 - **Entity Issues** (Chart renders but shows wrong/missing data): Use the debug panels as described in this guide
 
 ### If Issues Persist
