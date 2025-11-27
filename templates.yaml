@@ -442,7 +442,7 @@
         {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
         
         {# House consumption = Total AC output - Wallbox consumption #}
-        {% set house_consumption = (ac_output - wallbox_power) | abs %}
+        {% set house_consumption = ac_output - wallbox_power %}
         {{ [house_consumption, 0] | max | round(0) }}
 
     - name: "Solar To Battery"
@@ -454,13 +454,9 @@
       state: >
         {% set charging_state = states('sensor.charging_state') %}
         {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
-        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
         
-        {% if charging_state == 'CHARGING' and grid_power < 0 %}
-          {# Solar charging battery, export to grid #}
-          {{ [solar_power, 0] | max | round(0) }}
-        {% elif charging_state == 'CHARGING' and grid_power >= 0 %}
-          {# Solar + grid charging battery #}
+        {% if charging_state == 'CHARGING' %}
+          {# Solar available for battery charging #}
           {{ [solar_power, 0] | max | round(0) }}
         {% else %}
           0
@@ -478,11 +474,11 @@
         {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
         {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
         
-        {# Calculate house consumption directly to avoid circular dependency #}
-        {% set house_consumption = (ac_output - wallbox_power) | abs %}
+        {# Calculate house consumption to avoid circular dependency #}
+        {% set house_consumption = [ac_output - wallbox_power, 0] | max %}
         
         {% if charging_state in ['DISCHARGING', 'HOLDING', 'OFF'] %}
-          {# Solar goes to house consumption #}
+          {# Solar goes to house consumption - take minimum of both #}
           {{ [solar_power, house_consumption] | min | round(0) }}
         {% else %}
           0
@@ -568,4 +564,6 @@
       device_class: power
       state_class: measurement
       state: >
+        {# Wrap Wattpilot sensor for consistency with other flow sensors #}
+        {# Allows for future processing (e.g., filtering, smoothing) if needed #}
         {{ states('sensor.wattpilot_charging_power') | float(default=0) | round(0) }}
