@@ -650,7 +650,21 @@
             {% endif %}
           {% endfor %}
           {{ invalid }}
-        total_entities: 10
+        total_entities: >
+          {# ENTITY LIST - Keep in sync across all attributes #}
+          {% set entities = [
+            'sensor.total_solar_power',
+            'sensor.grid_power',
+            'sensor.battery_power',
+            'sensor.solar_to_house',
+            'sensor.solar_to_battery',
+            'sensor.solar_to_grid',
+            'sensor.grid_to_house',
+            'sensor.grid_to_battery',
+            'sensor.battery_to_house',
+            'sensor.house_consumption'
+          ] %}
+          {{ entities | length }}
         available_count: >
           {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
