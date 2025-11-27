@@ -14,7 +14,7 @@ frontend:
 lovelace:
   mode: yaml
   resources:
-    - url: /local/ha-sankey-chart.js?v=3.10.0
+    - url: /hacsfiles/ha-sankey-chart/ha-sankey-chart.js
       type: module
   dashboards:
     lovelace-battery:
