@@ -228,6 +228,74 @@ views:
         min_box_height: 3
         min_box_distance: 5
 
+      # --- SANKEY CHART DEBUG PANEL ---
+      - type: conditional
+        conditions:
+          - entity: sensor.sankey_entity_check
+            state: ERROR
+        card:
+          type: markdown
+          content: |
+            ## ⚠️ Sankey Chart Debug Information
+            
+            **Status:** {{ states('sensor.sankey_entity_check') }}
+            
+            **Available Entities:** {{ state_attr('sensor.sankey_entity_check', 'available_count') }}/{{ state_attr('sensor.sankey_entity_check', 'total_entities') }}
+            
+            {% if state_attr('sensor.sankey_entity_check', 'unavailable_entities') | length > 0 %}
+            ### 🔴 Unavailable Entities:
+            {% for entity in state_attr('sensor.sankey_entity_check', 'unavailable_entities') %}
+            - `{{ entity }}` - State: {{ states(entity) }}
+            {% endfor %}
+            {% endif %}
+            
+            {% if state_attr('sensor.sankey_entity_check', 'invalid_entities') | length > 0 %}
+            ### 🟡 Invalid Value Entities:
+            {% for entity in state_attr('sensor.sankey_entity_check', 'invalid_entities') %}
+            - `{{ entity }}` - Value: {{ states(entity) }}
+            {% endfor %}
+            {% endif %}
+            
+            ### 💡 Recommendations:
+            {{ state_attr('sensor.sankey_debug_info', 'recommendations') }}
+            
+            ---
+            *This panel appears automatically when issues are detected*
+
+      # --- SANKEY DEBUG STATUS (Always Visible) ---
+      - type: entities
+        title: 🔍 Sankey Chart Status
+        show_header_toggle: false
+        entities:
+          - entity: sensor.sankey_entity_check
+            name: Entity Check Status
+            icon: mdi:check-circle
+          - type: attribute
+            entity: sensor.sankey_entity_check
+            attribute: available_count
+            name: Available Entities
+          - type: attribute
+            entity: sensor.sankey_entity_check
+            attribute: total_entities
+            name: Total Entities Monitored
+          - entity: sensor.sankey_debug_info
+            name: Diagnosis
+          - type: divider
+          - type: section
+            label: Quick Entity Status
+          - entity: sensor.total_solar_power
+            name: Total Solar Power
+            secondary_info: last-changed
+          - entity: sensor.grid_power
+            name: Grid Power
+            secondary_info: last-changed
+          - entity: sensor.battery_power
+            name: Battery Power
+            secondary_info: last-changed
+          - entity: sensor.house_consumption
+            name: House Consumption
+            secondary_info: last-changed
+
       # --- REAL-TIME POWER STATUS ---
       - type: entities
         title: 📊 Real-Time Power Status
@@ -360,6 +428,77 @@ views:
             name: House
           - entity: sensor.wallbox_power
             name: Wallbox
+
+      # --- DETAILED ENTITY VALUES DEBUG ---
+      - type: entities
+        title: 🔧 All Sankey Entity Values (Debug)
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - type: section
+            label: Primary Sources
+          - entity: sensor.total_solar_power
+            name: Total Solar Power
+            secondary_info: last-changed
+          - entity: sensor.fronius_solar_power
+            name: "  └─ Fronius Solar"
+            secondary_info: last-changed
+          - entity: sensor.balkonkraftwerk_power
+            name: "  └─ Balkonkraftwerk"
+            secondary_info: last-changed
+          - entity: sensor.grid_power
+            name: Grid Power
+            secondary_info: last-changed
+          - entity: sensor.battery_power
+            name: Battery Power
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: Flow Sensors (Solar)
+          - entity: sensor.solar_to_house
+            name: Solar → House
+            secondary_info: last-changed
+          - entity: sensor.solar_to_battery
+            name: Solar → Battery
+            secondary_info: last-changed
+          - entity: sensor.solar_to_grid
+            name: Solar → Grid
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: Flow Sensors (Grid)
+          - entity: sensor.grid_to_house
+            name: Grid → House
+            secondary_info: last-changed
+          - entity: sensor.grid_to_battery
+            name: Grid → Battery
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: Flow Sensors (Battery)
+          - entity: sensor.battery_to_house
+            name: Battery → House
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: Final Consumption
+          - entity: sensor.house_consumption
+            name: House Consumption
+            secondary_info: last-changed
+          - entity: sensor.wallbox_power
+            name: Wallbox Power
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: Supporting Sensors
+          - entity: sensor.charging_state
+            name: Battery Charging State
+          - entity: sensor.reading_energy_main_meter
+            name: Main Meter Reading
+            secondary_info: last-changed
+          - entity: sensor.reading_energy_inverter_ac_output
+            name: Inverter AC Output
+            secondary_info: last-changed
 
       # --- SYSTEM DIAGRAM ---
       - type: markdown

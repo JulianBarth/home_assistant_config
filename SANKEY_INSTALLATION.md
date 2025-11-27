@@ -90,6 +90,98 @@ The configuration has been added to your system:
 - **Sensors**: Added to `templates.yaml`
 - **Dashboard**: Added to `ui-lovelace.yaml`
 
+## Debugging Features
+
+### Built-in Debug Panels
+
+The Energy Flow dashboard now includes comprehensive debugging tools to help diagnose issues:
+
+#### 1. **Sankey Chart Status Panel** (Always Visible)
+Located right after the Sankey chart, this panel shows:
+- **Entity Check Status**: OK or ERROR
+- **Available Entities**: Count of working entities (should be 10/10)
+- **Diagnosis**: Quick summary of any issues
+- **Quick Entity Status**: Real-time values for main sensors
+
+#### 2. **Auto-Appearing Error Panel**
+This panel appears automatically when issues are detected:
+- Lists all unavailable entities with their states
+- Shows entities with invalid values
+- Provides specific recommendations for fixing issues
+
+#### 3. **Detailed Entity Values Panel**
+Shows all entity values used by the Sankey chart:
+- Primary sources (Solar, Grid, Battery)
+- All flow sensors (Solar→House, Grid→Battery, etc.)
+- Final consumption values
+- Supporting sensors
+
+### Using the Debug Panels
+
+1. **Navigate to Energy Flow View**
+   - Open Home Assistant
+   - Click on "Energy Flow" in the sidebar
+   - Scroll down past the Sankey chart
+
+2. **Check the Status Panel**
+   - Look for "🔍 Sankey Chart Status"
+   - Check if "Entity Check Status" shows "OK" or "ERROR"
+   - Note the "Available Entities" count (should be 10/10)
+
+3. **If Status Shows ERROR**
+   - A warning panel will appear automatically above the status
+   - Review the list of unavailable or invalid entities
+   - Follow the recommendations provided
+
+4. **View Detailed Values**
+   - Scroll to "🔧 All Sankey Entity Values (Debug)"
+   - Check each entity's current value
+   - Entities showing "unavailable" or "unknown" indicate problems
+
+### Debug Sensors
+
+Two new sensors are available for monitoring:
+
+- **`sensor.sankey_entity_check`**: Overall status (OK/ERROR)
+  - Attributes:
+    - `unavailable_entities`: List of unavailable entities
+    - `invalid_entities`: List of entities with invalid values
+    - `available_count`: Number of working entities
+    - `total_entities`: Total entities checked (10)
+
+- **`sensor.sankey_debug_info`**: Detailed diagnostic information
+  - Attributes:
+    - `entity_states`: JSON object with all entity states
+    - `diagnosis`: Human-readable diagnosis
+    - `recommendations`: Specific fix suggestions
+
+### Quick Troubleshooting with Debug Panels
+
+1. **Check Entity Availability**
+   ```
+   If status shows "Available Entities: 7/10":
+   - 3 entities are not available
+   - Check the error panel for which entities
+   - Follow recommendations to fix
+   ```
+
+2. **Identify Source Issues**
+   ```
+   Common issues and their causes:
+   - sensor.fronius_solar_power unavailable → Modbus connection issue
+   - sensor.balkonkraftwerk_power unavailable → Deye inverter offline
+   - sensor.battery_power unavailable → Check charging_state sensor
+   - sensor.grid_power unavailable → Check main_meter sensor
+   ```
+
+3. **Verify Flow Calculations**
+   ```
+   Flow sensors (solar_to_house, grid_to_battery, etc.) depend on:
+   - Primary source sensors being available
+   - charging_state being valid
+   - Template calculations working correctly
+   ```
+
 ## Troubleshooting
 
 ### Card Not Showing
@@ -138,6 +230,10 @@ The configuration has been added to your system:
 ### Card Shows but No Data
 
 **Problem**: Sankey chart displays but shows no energy flows
+
+**SOLUTION: Use the Built-in Debug Panels** (see above)
+
+**Alternative Manual Checks**:
 
 **Solutions**:
 1. Check sensor states:

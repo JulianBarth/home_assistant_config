@@ -567,3 +567,174 @@
         {# Wrap Wattpilot sensor for consistency with other flow sensors #}
         {# Allows for future processing (e.g., filtering, smoothing) if needed #}
         {{ states('sensor.wattpilot_charging_power') | float(default=0) | round(0) }}
+
+# Sankey Chart Debug Sensors
+# NOTE: Entity list is repeated in state and each attribute due to Home Assistant template limitations.
+# When updating entities, update ALL occurrences of the list below.
+- sensor:
+    - name: "Sankey Entity Check"
+      unique_id: sankey_entity_check
+      icon: mdi:chart-sankey-variant
+      state: >
+        {# ENTITY LIST - Keep in sync across all attributes #}
+        {% set entities = [
+          'sensor.total_solar_power',
+          'sensor.grid_power',
+          'sensor.battery_power',
+          'sensor.solar_to_house',
+          'sensor.solar_to_battery',
+          'sensor.solar_to_grid',
+          'sensor.grid_to_house',
+          'sensor.grid_to_battery',
+          'sensor.battery_to_house',
+          'sensor.house_consumption'
+        ] %}
+        {% set numeric_pattern = '^-?\\d+\\.?\\d*$' %}
+        {% set unavailable = [] %}
+        {% set invalid = [] %}
+        {% for entity in entities %}
+          {% if states(entity) in ['unavailable', 'unknown', 'none', None] %}
+            {% set unavailable = unavailable + [entity] %}
+          {% elif not (states(entity) | regex_match(numeric_pattern)) %}
+            {% set invalid = invalid + [entity] %}
+          {% endif %}
+        {% endfor %}
+        {% if unavailable | length > 0 or invalid | length > 0 %}
+          ERROR
+        {% else %}
+          OK
+        {% endif %}
+      attributes:
+        unavailable_entities: >
+          {# ENTITY LIST - Keep in sync across all attributes #}
+          {% set entities = [
+            'sensor.total_solar_power',
+            'sensor.grid_power',
+            'sensor.battery_power',
+            'sensor.solar_to_house',
+            'sensor.solar_to_battery',
+            'sensor.solar_to_grid',
+            'sensor.grid_to_house',
+            'sensor.grid_to_battery',
+            'sensor.battery_to_house',
+            'sensor.house_consumption'
+          ] %}
+          {% set unavailable = [] %}
+          {% for entity in entities %}
+            {% if states(entity) in ['unavailable', 'unknown', 'none', None] %}
+              {% set unavailable = unavailable + [entity] %}
+            {% endif %}
+          {% endfor %}
+          {{ unavailable }}
+        invalid_entities: >
+          {# ENTITY LIST - Keep in sync across all attributes #}
+          {% set entities = [
+            'sensor.total_solar_power',
+            'sensor.grid_power',
+            'sensor.battery_power',
+            'sensor.solar_to_house',
+            'sensor.solar_to_battery',
+            'sensor.solar_to_grid',
+            'sensor.grid_to_house',
+            'sensor.grid_to_battery',
+            'sensor.battery_to_house',
+            'sensor.house_consumption'
+          ] %}
+          {% set numeric_pattern = '^-?\\d+\\.?\\d*$' %}
+          {% set invalid = [] %}
+          {% for entity in entities %}
+            {% if states(entity) not in ['unavailable', 'unknown', 'none', None] %}
+              {% if not (states(entity) | regex_match(numeric_pattern)) %}
+                {% set invalid = invalid + [entity] %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {{ invalid }}
+        total_entities: >
+          {# ENTITY LIST - Keep in sync across all attributes #}
+          {% set entities = [
+            'sensor.total_solar_power',
+            'sensor.grid_power',
+            'sensor.battery_power',
+            'sensor.solar_to_house',
+            'sensor.solar_to_battery',
+            'sensor.solar_to_grid',
+            'sensor.grid_to_house',
+            'sensor.grid_to_battery',
+            'sensor.battery_to_house',
+            'sensor.house_consumption'
+          ] %}
+          {{ entities | length }}
+        available_count: >
+          {# ENTITY LIST - Keep in sync across all attributes #}
+          {% set entities = [
+            'sensor.total_solar_power',
+            'sensor.grid_power',
+            'sensor.battery_power',
+            'sensor.solar_to_house',
+            'sensor.solar_to_battery',
+            'sensor.solar_to_grid',
+            'sensor.grid_to_house',
+            'sensor.grid_to_battery',
+            'sensor.battery_to_house',
+            'sensor.house_consumption'
+          ] %}
+          {% set available = 0 %}
+          {% for entity in entities %}
+            {% if states(entity) not in ['unavailable', 'unknown', 'none', None] %}
+              {% set available = available + 1 %}
+            {% endif %}
+          {% endfor %}
+          {{ available }}
+
+    - name: "Sankey Debug Info"
+      unique_id: sankey_debug_info
+      icon: mdi:information-outline
+      state: >
+        {% set check_state = states('sensor.sankey_entity_check') %}
+        {% if check_state == 'OK' %}
+          All entities operational
+        {% else %}
+          Check entities panel for issues
+        {% endif %}
+      attributes:
+        entity_states: >
+          {
+            "total_solar_power": "{{ states('sensor.total_solar_power') }}",
+            "grid_power": "{{ states('sensor.grid_power') }}",
+            "battery_power": "{{ states('sensor.battery_power') }}",
+            "solar_to_house": "{{ states('sensor.solar_to_house') }}",
+            "solar_to_battery": "{{ states('sensor.solar_to_battery') }}",
+            "solar_to_grid": "{{ states('sensor.solar_to_grid') }}",
+            "grid_to_house": "{{ states('sensor.grid_to_house') }}",
+            "grid_to_battery": "{{ states('sensor.grid_to_battery') }}",
+            "battery_to_house": "{{ states('sensor.battery_to_house') }}",
+            "house_consumption": "{{ states('sensor.house_consumption') }}"
+          }
+        diagnosis: >
+          {% set unavailable = state_attr('sensor.sankey_entity_check', 'unavailable_entities') %}
+          {% set invalid = state_attr('sensor.sankey_entity_check', 'invalid_entities') %}
+          {% if unavailable | length > 0 %}
+            ISSUE: {{ unavailable | length }} entities are unavailable. Check their source sensors.
+          {% elif invalid | length > 0 %}
+            ISSUE: {{ invalid | length }} entities have invalid values. Check template calculations.
+          {% else %}
+            All entities are available and have valid numeric values.
+          {% endif %}
+        recommendations: >
+          {% set unavailable = state_attr('sensor.sankey_entity_check', 'unavailable_entities') %}
+          {% if 'sensor.total_solar_power' in unavailable or 'sensor.fronius_solar_power' in unavailable %}
+            - Check Fronius Modbus connection (IP: 192.168.178.92)
+          {% endif %}
+          {% if 'sensor.balkonkraftwerk_power' in unavailable %}
+            - Check Deye inverter connection (IP: 192.168.178.78)
+          {% endif %}
+          {% if 'sensor.grid_power' in unavailable %}
+            - Check sensor.reading_energy_main_meter availability
+          {% endif %}
+          {% if 'sensor.battery_power' in unavailable %}
+            - Check charging_state and energy sensors
+          {% endif %}
+          {% if unavailable | length == 0 %}
+            No issues detected. Sankey chart should display correctly.
+          {% endif %}
