@@ -12,7 +12,9 @@ frontend:
 # Lovelace UI configuration
 lovelace:
   mode: yaml
-  resources: []
+  resources:
+    - url: /hacsfiles/lovelace-sankey-chart/sankey-chart.js
+      type: module
   dashboards:
     lovelace-battery:
       mode: yaml

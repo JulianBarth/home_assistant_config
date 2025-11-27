@@ -71,6 +71,20 @@ The system now includes a comprehensive Lovelace dashboard (`ui-lovelace.yaml`) 
 - Current and forecasted energy prices
 - Visual gauge for battery level
 
+### Energy Flow (NEW!)
+- **Interactive Sankey chart** showing real-time energy flows
+- Visual representation of power distribution between:
+  - Solar panels (Fronius + Balkonkraftwerk)
+  - Battery storage
+  - House consumption
+  - Wallbox (EV charging)
+  - Grid (import/export)
+- Real-time power status with gauges
+- Historical energy flow graphs
+- Detailed flow tracking for all energy paths
+
+**See [ENERGY_FLOW_SETUP.md](ENERGY_FLOW_SETUP.md) for complete energy flow visualization documentation**
+
 ### Charging Logic
 - Charging decision indicators (should start/stop charging)
 - Solar forecast conditions

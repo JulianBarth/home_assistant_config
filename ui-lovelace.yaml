@@ -164,6 +164,221 @@ views:
           - entity: binary_sensor.tibber_pulse_not_functioning
             name: Tibber Pulse Status
 
+  # --- ENERGY FLOW VISUALIZATION ---
+  - title: Energy Flow
+    path: energy_flow
+    icon: mdi:chart-sankey
+    cards:
+      # --- MAIN ENERGY FLOW SANKEY CHART ---
+      - type: custom:sankey-chart
+        title: 🔋 Energy Flow Visualization
+        height: 600
+        wide: true
+        show_names: true
+        show_values: true
+        show_units: true
+        sections:
+          # Energy Sources
+          - entities:
+              - entity_id: sensor.fronius_solar_power
+                name: Fronius Solar
+                color: '#FFB300'
+              - entity_id: sensor.balkonkraftwerk_power
+                name: Balkonkraftwerk
+                color: '#FDD835'
+              - entity_id: sensor.grid_power
+                name: Grid
+                color: '#2196F3'
+                children:
+                  - sensor.grid_to_house
+                  - sensor.grid_to_battery
+              - entity_id: sensor.battery_power
+                name: Battery
+                color: '#4CAF50'
+                children:
+                  - sensor.battery_to_house
+          # Energy Consumers
+          - entities:
+              - entity_id: sensor.house_consumption
+                name: House
+                color: '#FF5722'
+              - entity_id: sensor.wallbox_power
+                name: Wallbox
+                color: '#9C27B0'
+        energy_date_selection: false
+        min_box_height: 3
+        min_box_distance: 5
+
+      # --- REAL-TIME POWER STATUS ---
+      - type: entities
+        title: 📊 Real-Time Power Status
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - type: section
+            label: Energy Sources
+          - entity: sensor.total_solar_power
+            name: ☀️ Total Solar Production
+            icon: mdi:solar-power-variant
+          - entity: sensor.fronius_solar_power
+            name: Fronius System
+            icon: mdi:solar-panel-large
+          - entity: sensor.balkonkraftwerk_power
+            name: Balkonkraftwerk
+            icon: mdi:solar-panel
+          - type: divider
+          - type: section
+            label: Battery
+          - entity: sensor.battery_power
+            name: 🔋 Battery Power
+            secondary_info: last-changed
+          - entity: sensor.charging_state
+            name: State
+          - entity: sensor.batterie_soc
+            name: Charge Level
+          - type: divider
+          - type: section
+            label: Grid & Consumption
+          - entity: sensor.grid_power
+            name: 🔌 Grid Power
+            secondary_info: last-changed
+          - entity: sensor.house_consumption
+            name: 🏠 House Consumption
+          - entity: sensor.wallbox_power
+            name: 🚗 Wallbox
+
+      # --- ENERGY FLOW GAUGES ---
+      - type: vertical-stack
+        cards:
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.total_solar_power
+                name: Solar Power
+                min: 0
+                max: 7000
+                needle: true
+                severity:
+                  green: 1000
+                  yellow: 100
+                  red: 0
+              - type: gauge
+                entity: sensor.batterie_soc
+                name: Battery Level
+                min: 0
+                max: 100
+                needle: true
+                severity:
+                  green: 50
+                  yellow: 20
+                  red: 0
+          
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.grid_power
+                name: Grid Power
+                min: -5000
+                max: 5000
+                needle: true
+                severity:
+                  green: -1000
+                  yellow: 0
+                  red: 1000
+              - type: gauge
+                entity: sensor.house_consumption
+                name: House Consumption
+                min: 0
+                max: 10000
+                needle: true
+
+      # --- DETAILED ENERGY FLOWS ---
+      - type: entities
+        title: 🔄 Energy Flow Details
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - type: section
+            label: Solar Flows
+          - entity: sensor.solar_to_house
+            name: Solar → House
+            icon: mdi:arrow-right
+          - entity: sensor.solar_to_battery
+            name: Solar → Battery
+            icon: mdi:arrow-right
+          - entity: sensor.solar_to_grid
+            name: Solar → Grid (Export)
+            icon: mdi:arrow-right
+          - type: divider
+          - type: section
+            label: Battery Flows
+          - entity: sensor.battery_to_house
+            name: Battery → House
+            icon: mdi:arrow-right
+          - entity: sensor.grid_to_battery
+            name: Grid → Battery (Charging)
+            icon: mdi:arrow-right
+          - type: divider
+          - type: section
+            label: Grid Flows
+          - entity: sensor.grid_to_house
+            name: Grid → House (Import)
+            icon: mdi:arrow-right
+
+      # --- POWER FLOW HISTORY ---
+      - type: history-graph
+        title: Energy Flow History (2h)
+        hours_to_show: 2
+        refresh_interval: 30
+        entities:
+          - entity: sensor.total_solar_power
+            name: Solar
+          - entity: sensor.grid_power
+            name: Grid
+          - entity: sensor.battery_power
+            name: Battery
+          - entity: sensor.house_consumption
+            name: House
+          - entity: sensor.wallbox_power
+            name: Wallbox
+
+      # --- SYSTEM DIAGRAM ---
+      - type: markdown
+        title: 📐 System Architecture
+        content: |
+          ## Energy Flow System
+          
+          ### ☀️ Solar Production
+          - **Fronius Gen24 6.0**: Main solar system (up to 6 kW)
+          - **Deye Balkonkraftwerk**: Balcony power plant (800W)
+          - **Total Capacity**: 6.8 kW combined
+          
+          ### 🔋 Energy Storage
+          - **Battery**: BYD Battery Pack
+          - **Inverter**: Fronius Gen24 6.0
+          - **Control**: Smart charging based on prices & forecast
+          
+          ### ⚡ Distribution
+          - **House**: General household consumption
+          - **Wallbox**: Wattpilot EV charging station
+          - **Grid**: Import when needed, export excess
+          
+          ### 📊 Energy Flow Paths
+          ```
+          Solar → House (direct consumption)
+          Solar → Battery (storage)
+          Solar → Grid (export excess)
+          Battery → House (stored energy)
+          Grid → House (import when needed)
+          Grid → Battery (cheap charging)
+          ```
+          
+          ### 🎯 Optimization
+          - Prioritize solar self-consumption
+          - Charge battery during low prices
+          - Export excess to grid
+          - Smart EV charging coordination
+
   # --- SOLAR PRODUCTION VIEW ---
   - title: Solar
     path: solar
