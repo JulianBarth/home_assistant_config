@@ -590,16 +590,15 @@
           'sensor.house_consumption'
         ] %}
         {% set numeric_pattern = '^-?\\d+\\.?\\d*$' %}
-        {% set unavailable = [] %}
-        {% set invalid = [] %}
+        {% set ns = namespace(unavailable=[], invalid=[]) %}
         {% for entity in entities %}
           {% if states(entity) in ['unavailable', 'unknown', 'none', 'None', None, ''] %}
-            {% set unavailable = unavailable + [entity] %}
+            {% set ns.unavailable = ns.unavailable + [entity] %}
           {% elif not (states(entity) | regex_match(numeric_pattern)) %}
-            {% set invalid = invalid + [entity] %}
+            {% set ns.invalid = ns.invalid + [entity] %}
           {% endif %}
         {% endfor %}
-        {% if unavailable | length > 0 or invalid | length > 0 %}
+        {% if ns.unavailable | length > 0 or ns.invalid | length > 0 %}
           ERROR
         {% else %}
           OK
@@ -619,13 +618,13 @@
             'sensor.battery_to_house',
             'sensor.house_consumption'
           ] %}
-          {% set unavailable = [] %}
+          {% set ns = namespace(unavailable=[]) %}
           {% for entity in entities %}
             {% if states(entity) in ['unavailable', 'unknown', 'none', 'None', None, ''] %}
-              {% set unavailable = unavailable + [entity] %}
+              {% set ns.unavailable = ns.unavailable + [entity] %}
             {% endif %}
           {% endfor %}
-          {{ unavailable }}
+          {{ ns.unavailable }}
         invalid_entities: >
           {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
@@ -641,15 +640,15 @@
             'sensor.house_consumption'
           ] %}
           {% set numeric_pattern = '^-?\\d+\\.?\\d*$' %}
-          {% set invalid = [] %}
+          {% set ns = namespace(invalid=[]) %}
           {% for entity in entities %}
             {% if states(entity) not in ['unavailable', 'unknown', 'none', 'None', None, ''] %}
               {% if not (states(entity) | regex_match(numeric_pattern)) %}
-                {% set invalid = invalid + [entity] %}
+                {% set ns.invalid = ns.invalid + [entity] %}
               {% endif %}
             {% endif %}
           {% endfor %}
-          {{ invalid }}
+          {{ ns.invalid }}
         total_entities: >
           {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
@@ -679,13 +678,13 @@
             'sensor.battery_to_house',
             'sensor.house_consumption'
           ] %}
-          {% set available = 0 %}
+          {% set ns = namespace(available=0) %}
           {% for entity in entities %}
             {% if states(entity) not in ['unavailable', 'unknown', 'none', 'None', None, ''] %}
-              {% set available = available + 1 %}
+              {% set ns.available = ns.available + 1 %}
             {% endif %}
           {% endfor %}
-          {{ available }}
+          {{ ns.available }}
 
     - name: "Sankey Debug Info"
       unique_id: sankey_debug_info
