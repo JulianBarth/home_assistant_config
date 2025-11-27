@@ -365,9 +365,3 @@ script: !include scripts.yaml
 scene: !include scenes.yaml
 modbus: !include modbus.yaml
 template: !include templates.yaml
-
-solarman:
-  - name: Deye
-    host: 192.168.178.78
-    serial: 3966925526
-    lookup_file: deye_micro.yaml

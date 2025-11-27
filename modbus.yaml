@@ -108,7 +108,7 @@
       slave: 1
       data_type: int16
       address: 40365
-      scan_interval: 2
+      scan_interval: 5
       unit_of_measurement: "%"
       unique_id: 9af951af-ad20-410b-8e3f-29c9e21702c3
     # InWRte 40367
@@ -116,7 +116,7 @@
       slave: 1
       data_type: int16
       address: 40366
-      scan_interval: 2
+      scan_interval: 5
       unit_of_measurement: "%"
       unique_id: 8c5c170b-d0a5-442a-a217-67e8eb5727ea
     - name: nameplate_id
