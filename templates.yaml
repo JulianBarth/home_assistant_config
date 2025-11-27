@@ -572,6 +572,32 @@
 # NOTE: Entity list is repeated in state and each attribute due to Home Assistant template limitations.
 # When updating entities, update ALL occurrences of the list below.
 - sensor:
+    - name: "Sankey Battery Discharge"
+      unique_id: sankey_battery_discharge
+      icon: mdi:battery-arrow-down
+      unit_of_measurement: W
+      device_class: power
+      state: >
+        {% set battery_power = states('sensor.battery_power') | float(default=0) %}
+        {% if battery_power < 0 %}
+          {{ (battery_power | abs) | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+    - name: "Sankey Grid Import"
+      unique_id: sankey_grid_import
+      icon: mdi:transmission-tower
+      unit_of_measurement: W
+      device_class: power
+      state: >
+        {% set grid_power = states('sensor.grid_power') | float(default=0) %}
+        {% if grid_power > 0 %}
+          {{ grid_power | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+
     - name: "Sankey Entity Check"
       unique_id: sankey_entity_check
       icon: mdi:chart-sankey-variant
@@ -579,8 +605,8 @@
         {# ENTITY LIST - Keep in sync across all attributes #}
         {% set entities = [
           'sensor.total_solar_power',
-          'sensor.grid_power',
-          'sensor.battery_power',
+          'sensor.sankey_grid_import',
+          'sensor.sankey_battery_discharge',
           'sensor.solar_to_house',
           'sensor.solar_to_battery',
           'sensor.solar_to_grid',
@@ -608,8 +634,8 @@
           {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
             'sensor.total_solar_power',
-            'sensor.grid_power',
-            'sensor.battery_power',
+            'sensor.sankey_grid_import',
+            'sensor.sankey_battery_discharge',
             'sensor.solar_to_house',
             'sensor.solar_to_battery',
             'sensor.solar_to_grid',
@@ -629,8 +655,8 @@
           {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
             'sensor.total_solar_power',
-            'sensor.grid_power',
-            'sensor.battery_power',
+            'sensor.sankey_grid_import',
+            'sensor.sankey_battery_discharge',
             'sensor.solar_to_house',
             'sensor.solar_to_battery',
             'sensor.solar_to_grid',
@@ -653,8 +679,8 @@
           {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
             'sensor.total_solar_power',
-            'sensor.grid_power',
-            'sensor.battery_power',
+            'sensor.sankey_grid_import',
+            'sensor.sankey_battery_discharge',
             'sensor.solar_to_house',
             'sensor.solar_to_battery',
             'sensor.solar_to_grid',
@@ -668,8 +694,8 @@
           {# ENTITY LIST - Keep in sync across all attributes #}
           {% set entities = [
             'sensor.total_solar_power',
-            'sensor.grid_power',
-            'sensor.battery_power',
+            'sensor.sankey_grid_import',
+            'sensor.sankey_battery_discharge',
             'sensor.solar_to_house',
             'sensor.solar_to_battery',
             'sensor.solar_to_grid',

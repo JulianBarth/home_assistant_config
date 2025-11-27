@@ -188,13 +188,13 @@ views:
                   - sensor.solar_to_house
                   - sensor.solar_to_battery
                   - sensor.solar_to_grid
-              - entity_id: sensor.grid_power
+              - entity_id: sensor.sankey_grid_import
                 name: Grid
                 color: '#2196F3'
                 children:
                   - sensor.grid_to_house
                   - sensor.grid_to_battery
-              - entity_id: sensor.battery_power
+              - entity_id: sensor.sankey_battery_discharge
                 name: Battery
                 color: '#4CAF50'
                 children:
