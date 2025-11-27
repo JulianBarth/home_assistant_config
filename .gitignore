@@ -6,6 +6,8 @@
 !*.yaml
 !*.md
 !*.txt
+# Add www directory
+!www/   
 
 # Ignore specific files and directories
 .storage/
