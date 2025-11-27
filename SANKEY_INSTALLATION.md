@@ -69,7 +69,7 @@ If HACS is not available, you can install manually:
    lovelace:
      mode: yaml
      resources:
-       - url: /hacsfiles/lovelace-sankey-chart/sankey-chart.js
+       - url: /hacsfiles/lovelace-sankey-chart/ha-sankey-chart.js
          type: module
    ```
 
