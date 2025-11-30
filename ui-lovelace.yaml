@@ -798,6 +798,65 @@ views:
         entities:
           - entity: input_boolean.battery_charging_active
           - entity: input_boolean.battery_no_discharging_active
+
+  # --- ALGORITHM ANALYSIS VIEW ---
+  - title: Algorithm Analysis
+    path: algorithm_analysis
+    icon: mdi:chart-timeline-variant
+    cards:
+      - type: markdown
+        content: |
+          ## 🧠 Algorithm Performance Analysis
+          Use this view to assess if the battery is charging at the optimal times.
+          
+          **Key Indicators:**
+          - **Price vs. Charge**: Are we charging when the price (Purple) is low?
+          - **Smart Target**: Is the `computed_target_soc` (Blue) adapting to the price?
+          - **Decision**: Is `should_start_charging` (Green) triggering correctly?
+
+      # --- MAIN ANALYSIS GRAPH ---
+      - type: history-graph
+        title: Price vs Charging Decision (48h)
+        hours_to_show: 48
+        entities:
+          - entity: sensor.tibber_energy_prices
+            name: Price (EUR/kWh)
+          - entity: sensor.computed_target_soc
+            name: Smart Target SoC (%)
+          - entity: sensor.batterie_soc
+            name: Battery SoC (%)
+          - entity: binary_sensor.should_start_charging
+            name: Start Signal
+          - entity: binary_sensor.charging_is_profitable
+            name: Profitable?
+          - entity: input_boolean.battery_charging_active
+            name: Charging Active
+
+      # --- PROFITABILITY FACTORS ---
+      - type: history-graph
+        title: Profitability Factors (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.tibber_energy_prices
+            name: Current Price
+          - entity: sensor.tibber_energy_average_price_next_12_hours
+            name: Avg Price (12h)
+          - entity: sensor.tibber_energy_highest_price_next_24_hours
+            name: Max Price (24h)
+          - entity: sensor.tibber_energy_price_percentile_next_12_hours
+            name: Price Percentile
+
+      # --- SOLAR IMPACT ---
+      - type: history-graph
+        title: Solar Forecast Impact (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
+            name: Solar Remaining
+          - entity: binary_sensor.expected_sun_low
+            name: Low Sun Flag
+          - entity: binary_sensor.expected_sun_very_low
+            name: Very Low Sun Flag
           - entity: input_boolean.battery_automation_on
           - entity: input_boolean.manual_charging_on
           - entity: input_boolean.manual_battery_charge
