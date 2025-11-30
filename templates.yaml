@@ -568,6 +568,45 @@
         {# Allows for future processing (e.g., filtering, smoothing) if needed #}
         {{ states('sensor.wattpilot_charging_power') | float(default=0) | round(0) }}
 
+    # Helper Power Sensors for Energy Integration (Riemann Sum)
+    - name: "Grid Import Power"
+      unique_id: grid_import_power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set p = states('sensor.grid_power') | float(default=0) %}
+        {% if p > 0 %} {{ p }} {% else %} 0 {% endif %}
+
+    - name: "Grid Export Power"
+      unique_id: grid_export_power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set p = states('sensor.grid_power') | float(default=0) %}
+        {% if p < 0 %} {{ p | abs }} {% else %} 0 {% endif %}
+
+    - name: "Battery Charge Power"
+      unique_id: battery_charge_power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set p = states('sensor.battery_power') | float(default=0) %}
+        {% set state = states('sensor.charging_state') %}
+        {% if state == 'CHARGING' %} {{ p | abs }} {% else %} 0 {% endif %}
+
+    - name: "Battery Discharge Power"
+      unique_id: battery_discharge_power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      state: >
+        {% set p = states('sensor.battery_power') | float(default=0) %}
+        {% set state = states('sensor.charging_state') %}
+        {% if state == 'DISCHARGING' %} {{ p | abs }} {% else %} 0 {% endif %}
+
 # Sankey Chart Debug Sensors
 # NOTE: Entity list is repeated in state and each attribute due to Home Assistant template limitations.
 # When updating entities, update ALL occurrences of the list below.

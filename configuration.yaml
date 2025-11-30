@@ -308,6 +308,38 @@ sensor:
             unknown
           {% endif %}
 
+  # Riemann Sum Integral Sensors for Energy Dashboard
+  - platform: integration
+    source: sensor.grid_import_power
+    name: grid_import_energy
+    unit_prefix: k
+    round: 2
+    method: left
+  - platform: integration
+    source: sensor.grid_export_power
+    name: grid_export_energy
+    unit_prefix: k
+    round: 2
+    method: left
+  - platform: integration
+    source: sensor.total_solar_power
+    name: solar_energy
+    unit_prefix: k
+    round: 2
+    method: left
+  - platform: integration
+    source: sensor.battery_charge_power
+    name: battery_charge_energy
+    unit_prefix: k
+    round: 2
+    method: left
+  - platform: integration
+    source: sensor.battery_discharge_power
+    name: battery_discharge_energy
+    unit_prefix: k
+    round: 2
+    method: left
+
 binary_sensor:
   # Binary sensor determining if the price is the lowest in the next 24 hours
   - platform: template
