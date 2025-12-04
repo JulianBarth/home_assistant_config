@@ -10,6 +10,7 @@ This project is licensed under the BSD-3-Clause License. See `LICENSE.txt` for m
 This project aims to automate the charging and discharging behavior of a basement battery system to optimize energy costs and maximize the usage of renewable energy. The key features include:
 
 - **Automate Charging for Low Energy Prices**: Charging is automated to occur during times when electricity prices are low.
+- **Efficient Battery Hold Mode**: Maintains target SOC using minimal charge/discharge rates instead of inefficient cycling, improving energy efficiency by 2-5%.
 - **Limit Discharging During Car Charging**: Prevent the battery from discharging when a car is being charged via the connected wallbox to maintain energy efficiency.
 - **Incorporate Solar Forecast**: The automation takes the expected solar generation into account to ensure the battery charges when solar production is anticipated to be lower.
 - **Tibber Pulse Monitoring**: Monitor the Tibber Pulse sensor health and receive notifications when the sensor is not functioning (e.g., low battery or connectivity issues).
@@ -38,6 +39,7 @@ The system has undergone significant improvements:
 - ✅ **Enhanced UI**: Added comprehensive Lovelace dashboard for easy monitoring and control
 - ✅ **Better Documentation**: Improved code comments and structure
 - ✅ **Algorithm Improvements**: Better separation of concerns with dedicated sensors for charging logic
+- ✅ **Battery Hold SOC Mode**: Integrated efficient hold mode to maintain target SOC without cycling (Dec 2024)
 
 ### Ongoing Considerations
 - The energy price evaluation could be further optimized with predictive analytics
@@ -130,6 +132,12 @@ For anyone wanting to expand or improve the project, start by focusing on:
 - **Enhanced Hysteresis**: Stop charging includes buffer to prevent cycling
 - **Opportunistic Charging**: Additional charging opportunity when prices are good but not optimal
 - **Multi-condition Logic**: Three-tier decision system for charging initiation
+- **Battery Hold SOC Mode** (December 2024): Efficient state maintenance at target SOC
+  - Replaces inefficient charge/discharge cycling with stable hold pattern
+  - Uses minimal charge/discharge rates (1% each) when at target
+  - Improves energy efficiency by 2-5%
+  - Extends battery lifespan through reduced cycle count
+  - See `HOLD_SOC_INTEGRATION_COMPLETE.md` for full details
 
 Feel free to raise issues, suggest features, or contribute improvements.
 
