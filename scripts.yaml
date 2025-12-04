@@ -246,3 +246,154 @@ set_dynamic_discharge_limit:
     - service: switch.turn_on
       target:
         entity_id: switch.StorCtl_Mod
+
+# =============================================================================
+# BATTERY HOLD SOC CONTROL SCRIPTS
+# These scripts implement efficient "hold SOC" mode to keep battery at target level
+# Instead of cycling charge/discharge, battery remains steady at desired SOC
+# Modbus registers: 40358 (StorCtl_Mod), 40365 (OutWRte), 40366 (InWRte)
+# =============================================================================
+
+hold_battery_soc:
+  alias: "Hold Battery SOC"
+  description: "Keep battery steady at current SOC (most efficient - no cycling)"
+  sequence:
+    # Enable storage control mode first
+    - service: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
+    # OutWRte - Disable discharge (set to 0%)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 0
+    # InWRte - Disable charge (set to 0%)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 0
+
+hold_battery_soc_minimal:
+  alias: "Hold Battery SOC (Minimal Rate)"
+  description: "Keep battery steady with minimal 1% charge/discharge allowance"
+  sequence:
+    # Enable storage control mode first
+    - service: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
+    # OutWRte - Minimal discharge (1%)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 100
+    # InWRte - Minimal charge (1%)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 100
+
+# =============================================================================
+# TEST FUNCTIONS FOR HOLD SOC VALIDATION
+# Use these scripts to test if hold SOC commands work properly before deployment
+# =============================================================================
+
+test_hold_soc_zero_rates:
+  alias: "TEST: Hold SOC with Zero Rates"
+  description: "Test script - Hold battery by setting charge/discharge to 0%"
+  sequence:
+    - service: notify.persistent_notification
+      data:
+        title: "Battery Hold SOC Test Started"
+        message: >
+          Testing hold SOC with zero rates.
+          
+          Before test:
+          - Battery SOC: {{ states('sensor.batterie_soc') }}%
+          - Charging State: {{ states('sensor.charging_state') }}
+          
+          Monitor the battery for 5-10 minutes to verify it stays steady.
+          Use script.stop_hold_soc_test to restore normal operation.
+    - service: script.turn_on
+      target:
+        entity_id: script.hold_battery_soc
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.battery_hold_soc_test_active
+
+test_hold_soc_minimal_rates:
+  alias: "TEST: Hold SOC with Minimal Rates"
+  description: "Test script - Hold battery with 1% charge/discharge allowance"
+  sequence:
+    - service: notify.persistent_notification
+      data:
+        title: "Battery Hold SOC Test Started (Minimal)"
+        message: >
+          Testing hold SOC with 1% minimal rates.
+          
+          Before test:
+          - Battery SOC: {{ states('sensor.batterie_soc') }}%
+          - Charging State: {{ states('sensor.charging_state') }}
+          
+          Monitor the battery for 5-10 minutes to verify it stays steady.
+          Use script.stop_hold_soc_test to restore normal operation.
+    - service: script.turn_on
+      target:
+        entity_id: script.hold_battery_soc_minimal
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.battery_hold_soc_test_active
+
+stop_hold_soc_test:
+  alias: "TEST: Stop Hold SOC Test"
+  description: "Stop hold SOC test and restore normal battery operation"
+  sequence:
+    - service: notify.persistent_notification
+      data:
+        title: "Battery Hold SOC Test Stopped"
+        message: >
+          Test completed. Restoring normal battery operation.
+          
+          After test:
+          - Battery SOC: {{ states('sensor.batterie_soc') }}%
+          - Charging State: {{ states('sensor.charging_state') }}
+          
+          Review the battery behavior during the test period.
+    - service: script.turn_on
+      target:
+        entity_id: script.set_regular_charge
+    - service: switch.turn_off
+      target:
+        entity_id: switch.StorCtl_Mod
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.battery_hold_soc_test_active
+
+verify_hold_soc_status:
+  alias: "TEST: Verify Hold SOC Status"
+  description: "Check current battery status and modbus register values"
+  sequence:
+    - service: notify.persistent_notification
+      data:
+        title: "Battery Hold SOC Status"
+        message: >
+          Current Battery Status:
+          
+          - Battery SOC: {{ states('sensor.batterie_soc') }}%
+          - Charging State: {{ states('sensor.charging_state') }}
+          - StorCtl_Mod: {{ states('sensor.battery_control_mode_read_write') }}
+          - Discharge Rate: {{ states('sensor.percent_max_discharge_rte') }}%
+          - Charge Rate: {{ states('sensor.percent_max_charge_rte') }}%
+          - Test Active: {{ states('input_boolean.battery_hold_soc_test_active') }}
+          
+          Expected for Hold Mode:
+          - Charging State should be: HOLDING or OFF
+          - Both rates should be: 0% or very low
+          - StorCtl_Mod should be: 3 (ON)

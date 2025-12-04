@@ -42,6 +42,10 @@ input_boolean:
   manual_battery_charge:
     name: Manual Battery Charge
     initial: false
+  battery_hold_soc_test_active:
+    name: Battery Hold SOC Test Active
+    icon: mdi:battery-sync
+    initial: false
 
 input_number:
   battery_target_soc:

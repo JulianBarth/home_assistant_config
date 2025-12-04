@@ -10,6 +10,7 @@ This project is licensed under the BSD-3-Clause License. See `LICENSE.txt` for m
 This project aims to automate the charging and discharging behavior of a basement battery system to optimize energy costs and maximize the usage of renewable energy. The key features include:
 
 - **Automate Charging for Low Energy Prices**: Charging is automated to occur during times when electricity prices are low.
+- **Hold SOC Mode**: NEW! Efficiently maintain battery at target SOC without cycling (see `HOLD_SOC_DOCUMENTATION.md`)
 - **Limit Discharging During Car Charging**: Prevent the battery from discharging when a car is being charged via the connected wallbox to maintain energy efficiency.
 - **Incorporate Solar Forecast**: The automation takes the expected solar generation into account to ensure the battery charges when solar production is anticipated to be lower.
 - **Tibber Pulse Monitoring**: Monitor the Tibber Pulse sensor health and receive notifications when the sensor is not functioning (e.g., low battery or connectivity issues).
@@ -38,16 +39,20 @@ The system has undergone significant improvements:
 - ✅ **Enhanced UI**: Added comprehensive Lovelace dashboard for easy monitoring and control
 - ✅ **Better Documentation**: Improved code comments and structure
 - ✅ **Algorithm Improvements**: Better separation of concerns with dedicated sensors for charging logic
+- ✅ **Hold SOC Feature**: NEW! Efficient battery holding mode to prevent unnecessary charge/discharge cycling
 
 ### Ongoing Considerations
 - The energy price evaluation could be further optimized with predictive analytics
 - Additional edge case handling for extreme weather or price scenarios
 - Integration with additional energy providers beyond Tibber
+- Full integration of hold SOC mode into main automation algorithm
 
 ## File Structure
 - **`automations.yaml`**: Contains the main automation logic for managing battery charging and discharging actions, as well as notifications for Tibber Pulse sensor health monitoring. Now simplified with cleaner condition checking using helper sensors.
 - **`modbus.yaml`**: Configuration for communication with the Fronius inverter using Modbus.
-- **`scripts.yaml`**: Defines the scripts used by the automation to start and stop charging or to limit discharging. Includes detailed comments explaining Modbus register usage.
+- **`scripts.yaml`**: Defines the scripts used by the automation to start and stop charging or to limit discharging. Includes detailed comments explaining Modbus register usage. **NEW: Includes hold SOC scripts for efficient battery management.**
+- **`HOLD_SOC_DOCUMENTATION.md`**: **NEW!** Comprehensive documentation for the battery hold SOC feature
+- **`HOLD_SOC_QUICK_REFERENCE.md`**: **NEW!** Quick reference card for testing and using hold SOC mode
 - **`configuration.yaml`**: Main configuration file for Home Assistant, including input booleans, sensors, binary sensors (including Tibber Pulse monitoring), and default integrations.
 - **`templates.yaml`**: Template sensors used for custom calculations based on inverter readings and energy prices. Now includes helper sensors to reduce code duplication.
 - **`ui-lovelace.yaml`**: Comprehensive Lovelace dashboard for battery management with multiple views for overview, charging logic, configuration, monitoring, and advanced controls.
@@ -129,6 +134,73 @@ For anyone wanting to expand or improve the project, start by focusing on:
 - **Average Price Tracking**: Better context for price evaluation
 - **Enhanced Hysteresis**: Stop charging includes buffer to prevent cycling
 - **Opportunistic Charging**: Additional charging opportunity when prices are good but not optimal
+- **Hold SOC Mode**: NEW feature that keeps battery steady at target SOC without cycling
+
+## NEW: Battery Hold SOC Feature
+
+The latest enhancement to the system is the **Hold SOC** (State of Charge) mode, which provides a more efficient way to maintain battery at target levels.
+
+### Why Hold SOC?
+
+**Traditional Method (Less Efficient):**
+- Battery cycles between charging and discharging to maintain target SOC
+- Each cycle loses ~10% energy due to round-trip inefficiency
+- Increases battery wear from constant cycling
+- Results in higher grid power draw
+
+**Hold SOC Method (Efficient):**
+- Battery held steady at target SOC by setting both charge and discharge rates to 0%
+- No cycling = no round-trip losses
+- Minimal battery wear
+- Only grid power for house consumption
+
+**Estimated Savings:** ~50 EUR/year in energy costs + extended battery life
+
+### Quick Start: Testing Hold SOC
+
+Before integrating into your main automation, test the feature:
+
+1. **Run Initial Test:**
+   ```
+   Home Assistant → Scripts → "TEST: Hold SOC with Zero Rates"
+   ```
+
+2. **Monitor for 5-10 minutes:**
+   - Battery SOC should stay steady (±1%)
+   - Charging State should show "HOLDING" or "OFF"
+
+3. **Verify Status:**
+   ```
+   Home Assistant → Scripts → "TEST: Verify Hold SOC Status"
+   ```
+
+4. **Stop Test:**
+   ```
+   Home Assistant → Scripts → "TEST: Stop Hold SOC Test"
+   ```
+
+### Documentation
+
+- **Full Documentation**: See `HOLD_SOC_DOCUMENTATION.md` for complete details on implementation, modbus registers, and integration guide
+- **Quick Reference**: See `HOLD_SOC_QUICK_REFERENCE.md` for a quick reference card with test instructions and troubleshooting
+
+### Available Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `hold_battery_soc` | Hold battery at current SOC (0% charge/discharge) |
+| `hold_battery_soc_minimal` | Hold with 1% rates (allows minor adjustments) |
+| `test_hold_soc_zero_rates` | Test zero rate hold mode |
+| `test_hold_soc_minimal_rates` | Test 1% rate hold mode |
+| `stop_hold_soc_test` | Exit test mode and restore normal operation |
+| `verify_hold_soc_status` | Check current battery and modbus status |
+
+### Next Steps
+
+After successful testing, you can integrate hold SOC into your main automation:
+- Replace `stop_battery_charging` with `hold_battery_soc` when target SOC is reached
+- Add exit conditions to resume normal operation when needed
+- Monitor for 24-48 hours to verify improvements
 - **Multi-condition Logic**: Three-tier decision system for charging initiation
 
 Feel free to raise issues, suggest features, or contribute improvements.
