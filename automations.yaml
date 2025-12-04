@@ -21,10 +21,11 @@
     # Trigger on mode changes
     - platform: state
       entity_id: sensor.battery_control_mode
-    # Trigger on SoC changes (for stop conditions)
+    # Trigger on SoC changes (for stop conditions and hold mode)
     - platform: state
       entity_id:
         - binary_sensor.should_stop_charging
+        - binary_sensor.should_hold_battery_soc
         - sensor.computed_target_soc
     # Fallback check every 5 minutes
     - platform: time_pattern
@@ -107,9 +108,18 @@
               target:
                 entity_id: input_boolean.battery_charging_active
 
-      # Default: Normal Operation or Stop Charging
+      # Default: Normal Operation or Stop Charging or Hold SOC
       default:
         - choose:
+            # Check if we should hold battery SOC at target
+            - conditions:
+                - condition: state
+                  entity_id: binary_sensor.should_hold_battery_soc
+                  state: "on"
+              sequence:
+                - service: script.turn_on
+                  target:
+                    entity_id: script.hold_battery_soc
             # Check if we should stop charging
             - conditions:
                 - condition: state
