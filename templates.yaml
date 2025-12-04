@@ -115,15 +115,18 @@
       icon: mdi:battery-lock
       state: >
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
+        {# Default 100 represents maximum target (100% SOC) as fallback #}
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
         
         {# Hold threshold: ±2% range around target #}
         {# Scaling: multiply by 100 because sensor.reading_energy_battery_soc_scaled uses 100 units = 1% #}
+        {# Note: This value appears in multiple templates; Home Assistant YAML doesn't support global constants #}
         {% set hold_threshold = 2 * 100 %}
         
         {# Hysteresis for stop charging (same calculation as should_stop_charging) #}
         {# Scaling: multiply by 50 because input_number.soc_hist uses different scale #}
+        {# Note: This value appears in multiple templates; Home Assistant YAML doesn't support global constants #}
         {% set stop_hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
         
         {# Hold SOC when: #}

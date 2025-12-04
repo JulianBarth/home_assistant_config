@@ -116,6 +116,8 @@
                 - condition: state
                   entity_id: binary_sensor.should_hold_battery_soc
                   state: "on"
+                # Double-check charging is still active to prevent race conditions
+                # between sensor evaluation and script execution
                 - condition: state
                   entity_id: input_boolean.battery_charging_active
                   state: "on"
