@@ -10,6 +10,13 @@
 # 
 # NOTE: These are EXAMPLES - do not add to automations.yaml yet!
 # First test the hold SOC scripts manually before integrating.
+#
+# IMPORTANT: All notification services in these examples use 
+# notify.persistent_notification (visible in Home Assistant UI).
+# Replace with your own notification service if needed, such as:
+# - notify.mobile_app_YOUR_DEVICE_NAME
+# - notify.telegram
+# - notify.pushbullet
 # =============================================================================
 
 # Example 1: Basic Hold SOC When Target Reached
@@ -40,7 +47,9 @@
       target:
         entity_id: input_boolean.battery_charging_active
     # Note: You may want to add a new flag like battery_holding_active
-    - service: notify.mobile_app_f4gdn4ry0gpq_2
+    # IMPORTANT: Replace with your own notification service
+    # Example: notify.mobile_app_YOUR_DEVICE_NAME
+    - service: notify.persistent_notification
       data:
         message: "Battery reached target SOC. Switched to hold mode."
         title: "Battery Hold Mode Active"
@@ -79,7 +88,9 @@
     - service: switch.turn_off
       target:
         entity_id: switch.StorCtl_Mod
-    - service: notify.mobile_app_f4gdn4ry0gpq_2
+    # IMPORTANT: Replace with your own notification service
+    # Example: notify.mobile_app_YOUR_DEVICE_NAME
+    - service: notify.persistent_notification
       data:
         message: "Exited hold mode: {{ trigger.to_state.attributes.friendly_name }} changed"
         title: "Battery Normal Operation Restored"
@@ -159,7 +170,9 @@
             - service: script.turn_on
               target:
                 entity_id: script.hold_battery_soc
-            - service: notify.mobile_app_f4gdn4ry0gpq_2
+            # IMPORTANT: Replace with your own notification service
+            # Example: notify.mobile_app_YOUR_DEVICE_NAME
+            - service: notify.persistent_notification
               data:
                 message: "Using zero-rate hold mode (stable conditions)"
                 title: "Battery Hold Mode"
@@ -177,7 +190,9 @@
             - service: script.turn_on
               target:
                 entity_id: script.hold_battery_soc_minimal
-            - service: notify.mobile_app_f4gdn4ry0gpq_2
+            # IMPORTANT: Replace with your own notification service
+            # Example: notify.mobile_app_YOUR_DEVICE_NAME
+            - service: notify.persistent_notification
               data:
                 message: "Using minimal-rate hold mode (dynamic conditions)"
                 title: "Battery Hold Mode"

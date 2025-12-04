@@ -286,6 +286,7 @@ hold_battery_soc_minimal:
       target:
         entity_id: switch.StorCtl_Mod
     # OutWRte - Minimal discharge (1%)
+    # Note: Register value 100 = 1% (register uses 0.01% increments, so 100 units = 1%)
     - service: modbus.write_register
       data:
         hub: fronius1
@@ -293,6 +294,7 @@ hold_battery_soc_minimal:
         address: 40365
         value: 100
     # InWRte - Minimal charge (1%)
+    # Note: Register value 100 = 1% (register uses 0.01% increments, so 100 units = 1%)
     - service: modbus.write_register
       data:
         hub: fronius1
@@ -386,12 +388,12 @@ verify_hold_soc_status:
         message: >
           Current Battery Status:
           
-          - Battery SOC: {{ states('sensor.batterie_soc') }}%
-          - Charging State: {{ states('sensor.charging_state') }}
-          - StorCtl_Mod: {{ states('sensor.battery_control_mode_read_write') }}
-          - Discharge Rate: {{ states('sensor.percent_max_discharge_rte') }}%
-          - Charge Rate: {{ states('sensor.percent_max_charge_rte') }}%
-          - Test Active: {{ states('input_boolean.battery_hold_soc_test_active') }}
+          - Battery SOC: {{ states('sensor.batterie_soc') | default('N/A') }}%
+          - Charging State: {{ states('sensor.charging_state') | default('N/A') }}
+          - StorCtl_Mod: {{ states('sensor.battery_control_mode_read_write') | default('N/A') }}
+          - Discharge Rate: {{ states('sensor.percent_max_discharge_rte') | default('N/A') }}%
+          - Charge Rate: {{ states('sensor.percent_max_charge_rte') | default('N/A') }}%
+          - Test Active: {{ states('input_boolean.battery_hold_soc_test_active') | default('N/A') }}
           
           Expected for Hold Mode:
           - Charging State should be: HOLDING or OFF

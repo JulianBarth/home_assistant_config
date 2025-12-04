@@ -31,8 +31,8 @@ This causes the battery to enter a "HOLDING" state where it neither charges nor 
 |----------|------|-------------|---------|
 | 40358 | StorCtl_Mod | Storage Control Mode | 0=Off, 3=On |
 | 40364 | ChaSt | Charging State | 1=OFF, 2=EMPTY, 3=DISCHARGING, 4=CHARGING, 5=FULL, **6=HOLDING**, 7=TESTING |
-| 40365 | OutWRte | Discharge Rate | 0-10000 (0-100% in 0.01% increments) |
-| 40366 | InWRte | Charge Rate | 0-10000 (0-100% in 0.01% increments) |
+| 40365 | OutWRte | Discharge Rate | 0-10000 (0.01% increments: 100 = 1%, 10000 = 100%) |
+| 40366 | InWRte | Charge Rate | 0-10000 (0.01% increments: 100 = 1%, 10000 = 100%) |
 | 40360 | MinRsvPct | Minimum Reserve % | Minimum SOC level (scaled) |
 
 ### Related Registers (Reference)
