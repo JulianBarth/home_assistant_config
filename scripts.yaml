@@ -125,6 +125,155 @@ forced_full_recharge:
         value: 10000
 
 # =============================================================================
+# HOLD SOC BATTERY CONTROL SCRIPTS
+# These scripts implement efficient battery SOC holding by setting minimal charge/discharge rates
+# This prevents the inefficient cycle of charging and discharging to maintain SOC
+# =============================================================================
+
+hold_battery_soc:
+  alias: "Hold Battery SOC"
+  description: "Hold battery at current SOC by minimizing charge/discharge rates (more efficient than alternating)"
+  sequence:
+    # OutWRte - Set discharge to 1% (minimal discharge)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 100
+    # InWRte - Set charge to 1% (minimal charge)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 100
+    # Enable storage control mode
+    - action: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
+
+# =============================================================================
+# TEST FUNCTIONS FOR HOLD SOC FUNCTIONALITY
+# These scripts allow users to test the hold SOC commands before deploying to production
+# =============================================================================
+
+test_hold_soc_enable:
+  alias: "TEST: Enable Hold SOC"
+  description: "Test script to enable hold SOC mode - Battery should enter HOLDING state (ChaSt=6)"
+  sequence:
+    # First, enable storage control mode
+    - action: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
+    - delay:
+        seconds: 2
+    # Set minimal charge and discharge rates to hold SOC
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 100  # 1% discharge
+    - delay:
+        seconds: 1
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 100  # 1% charge
+    - delay:
+        seconds: 2
+    # Notify user to check battery state
+    - service: persistent_notification.create
+      data:
+        title: "Hold SOC Test Enabled"
+        message: >
+          Hold SOC mode has been activated.
+          
+          **Expected behavior:**
+          - Battery should stop charging/discharging
+          - Charging State (ChaSt) should show "HOLDING" (value 6)
+          - Battery SoC should remain relatively stable
+          
+          **Check the following sensors:**
+          - sensor.charging_state (should be "HOLDING")
+          - sensor.batterie_soc (should be stable)
+          - sensor.battery_power (should be near 0W)
+          
+          **Next steps:**
+          1. Monitor for 5-10 minutes
+          2. If working correctly, run "TEST: Disable Hold SOC"
+          3. Report results to verify functionality
+
+test_hold_soc_disable:
+  alias: "TEST: Disable Hold SOC"
+  description: "Test script to disable hold SOC mode and return to normal operation"
+  sequence:
+    # Restore regular charge/discharge rates (100%)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 10000
+    - delay:
+        seconds: 1
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 10000
+    - delay:
+        seconds: 1
+    # Disable storage control mode
+    - action: switch.turn_off
+      target:
+        entity_id: switch.StorCtl_Mod
+    # Notify user
+    - service: persistent_notification.create
+      data:
+        title: "Hold SOC Test Disabled"
+        message: >
+          Hold SOC mode has been deactivated. Battery has returned to normal operation.
+          
+          **Expected behavior:**
+          - Battery should resume normal charge/discharge cycles
+          - StorCtl_Mod should be OFF
+          - System should respond to solar production and consumption
+          
+          If the test was successful, you can now integrate hold_battery_soc into your automations.
+
+test_hold_soc_status:
+  alias: "TEST: Check Hold SOC Status"
+  description: "Check current battery control status and display key metrics"
+  sequence:
+    - service: persistent_notification.create
+      data:
+        title: "Battery Hold SOC Status"
+        message: >
+          **Current Battery Status:**
+          
+          - **Battery SoC:** {{ states('sensor.batterie_soc') }}%
+          - **Charging State:** {{ states('sensor.charging_state') }}
+          - **ChaSt Value:** {{ states('sensor.ChaSt') }}
+          - **Battery Power:** {{ states('sensor.battery_power') }}W
+          - **StorCtl_Mod:** {{ states('switch.StorCtl_Mod') }}
+          
+          **Control Registers:**
+          - **Discharge Rate (OutWRte):** {{ states('sensor.percent_max_discharge_rte') }}%
+          - **Charge Rate (InWRte):** {{ states('sensor.percent_max_charge_rte') }}%
+          
+          **Expected for Hold Mode:**
+          - Charging State: HOLDING
+          - ChaSt Value: 6
+          - Battery Power: ~0W (±100W)
+          - StorCtl_Mod: on
+          - Discharge/Charge Rates: 1% (100 in register)
+
+# =============================================================================
 # HIGH-LEVEL BATTERY CONTROL SCRIPTS
 # These scripts orchestrate battery charging and discharging automation
 # =============================================================================
