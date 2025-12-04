@@ -149,7 +149,7 @@ hold_battery_soc:
         address: 40366
         value: 100
     # Enable storage control mode
-    - action: switch.turn_on
+    - service: switch.turn_on
       target:
         entity_id: switch.StorCtl_Mod
 
@@ -163,7 +163,7 @@ test_hold_soc_enable:
   description: "Test script to enable hold SOC mode - Battery should enter HOLDING state (ChaSt=6)"
   sequence:
     # First, enable storage control mode
-    - action: switch.turn_on
+    - service: switch.turn_on
       target:
         entity_id: switch.StorCtl_Mod
     - delay:
@@ -229,7 +229,7 @@ test_hold_soc_disable:
     - delay:
         seconds: 1
     # Disable storage control mode
-    - action: switch.turn_off
+    - service: switch.turn_off
       target:
         entity_id: switch.StorCtl_Mod
     # Notify user
