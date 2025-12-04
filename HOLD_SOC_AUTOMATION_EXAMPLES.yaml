@@ -1,0 +1,239 @@
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Copyright (c) 2024, Julian Bartholomeyczik
+# All rights reserved.
+
+# =============================================================================
+# HOLD SOC INTEGRATION EXAMPLE
+# This file contains example automations showing how to integrate hold SOC
+# into your battery management system
+# 
+# NOTE: These are EXAMPLES - do not add to automations.yaml yet!
+# First test the hold SOC scripts manually before integrating.
+# =============================================================================
+
+# Example 1: Basic Hold SOC When Target Reached
+# This replaces the traditional "stop charging" with "hold SOC"
+- alias: "Example: Hold Battery When Target SOC Reached"
+  description: "Switch to hold mode when battery reaches target SOC instead of stopping"
+  trigger:
+    - platform: template
+      value_template: >
+        {{ states('sensor.batterie_soc') | float >= 
+           states('input_number.battery_target_soc') | float }}
+  condition:
+    # Only activate if charging is currently active
+    - condition: state
+      entity_id: input_boolean.battery_charging_active
+      state: "on"
+    # Don't interfere if test mode is active
+    - condition: state
+      entity_id: input_boolean.battery_hold_soc_test_active
+      state: "off"
+  action:
+    # Switch from charging to holding
+    - service: script.turn_on
+      target:
+        entity_id: script.hold_battery_soc
+    # Update status flags
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.battery_charging_active
+    # Note: You may want to add a new flag like battery_holding_active
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        message: "Battery reached target SOC. Switched to hold mode."
+        title: "Battery Hold Mode Active"
+
+# Example 2: Exit Hold Mode When Conditions Change
+# This shows when to stop holding and allow normal operation
+- alias: "Example: Exit Hold Mode When Conditions Change"
+  description: "Exit hold mode when solar production increases or prices drop"
+  trigger:
+    # Exit when solar production increases significantly
+    - platform: numeric_state
+      entity_id: sensor.total_solar_power
+      above: 3000
+      for:
+        minutes: 5
+    # Exit when price drops significantly
+    - platform: numeric_state
+      entity_id: sensor.tibber_energy_price_percentile_next_12_hours
+      below: 10
+    # Exit when battery SOC drops too low (safety)
+    - platform: numeric_state
+      entity_id: sensor.batterie_soc
+      below: 15
+  condition:
+    # Only if we're currently in a hold-like state
+    # (You would need to track this with a custom flag)
+    - condition: template
+      value_template: >
+        {{ states('sensor.charging_state') in ['HOLDING', 'OFF'] and
+           states('sensor.percent_max_discharge_rte') | int == 0 }}
+  action:
+    # Restore normal operation
+    - service: script.turn_on
+      target:
+        entity_id: script.set_regular_charge
+    - service: switch.turn_off
+      target:
+        entity_id: switch.StorCtl_Mod
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        message: "Exited hold mode: {{ trigger.to_state.attributes.friendly_name }} changed"
+        title: "Battery Normal Operation Restored"
+
+# Example 3: Smart Hold Mode with Time Limits
+# This adds safety by limiting how long battery can be held
+- alias: "Example: Hold Battery with Time Limit"
+  description: "Hold battery but exit after maximum duration"
+  trigger:
+    - platform: template
+      value_template: >
+        {{ states('sensor.batterie_soc') | float >= 
+           states('input_number.battery_target_soc') | float }}
+  condition:
+    - condition: state
+      entity_id: input_boolean.battery_charging_active
+      state: "on"
+    - condition: state
+      entity_id: input_boolean.battery_hold_soc_test_active
+      state: "off"
+  action:
+    # Start hold mode
+    - service: script.turn_on
+      target:
+        entity_id: script.hold_battery_soc
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.battery_charging_active
+    # Wait for conditions to change (max 4 hours)
+    - wait_for_trigger:
+        # Exit if solar increases
+        - platform: numeric_state
+          entity_id: sensor.total_solar_power
+          above: 3000
+        # Exit if prices drop
+        - platform: numeric_state
+          entity_id: sensor.tibber_energy_price_percentile_next_12_hours
+          below: 15
+        # Exit if SOC drops (shouldn't happen but safety)
+        - platform: numeric_state
+          entity_id: sensor.batterie_soc
+          below: "{{ (states('input_number.battery_target_soc') | float) - 5 }}"
+      timeout:
+        hours: 4
+    # After timeout or trigger, restore normal operation
+    - service: script.turn_on
+      target:
+        entity_id: script.set_regular_charge
+    - service: switch.turn_off
+      target:
+        entity_id: switch.StorCtl_Mod
+
+# Example 4: Adaptive Hold Mode
+# This uses minimal rates during certain conditions
+- alias: "Example: Adaptive Hold Mode"
+  description: "Choose between zero rates or minimal rates based on conditions"
+  trigger:
+    - platform: template
+      value_template: >
+        {{ states('sensor.batterie_soc') | float >= 
+           states('input_number.battery_target_soc') | float }}
+  condition:
+    - condition: state
+      entity_id: input_boolean.battery_charging_active
+      state: "on"
+  action:
+    - choose:
+        # Use zero rates when conditions are stable
+        - conditions:
+            - condition: numeric_state
+              entity_id: sensor.total_solar_power
+              below: 500
+            - condition: template
+              value_template: >
+                {{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float > 50 }}
+          sequence:
+            - service: script.turn_on
+              target:
+                entity_id: script.hold_battery_soc
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                message: "Using zero-rate hold mode (stable conditions)"
+                title: "Battery Hold Mode"
+        # Use minimal rates when conditions might change
+        - conditions:
+            - condition: or
+              conditions:
+                - condition: numeric_state
+                  entity_id: sensor.total_solar_power
+                  above: 500
+                - condition: template
+                  value_template: >
+                    {{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float <= 50 }}
+          sequence:
+            - service: script.turn_on
+              target:
+                entity_id: script.hold_battery_soc_minimal
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                message: "Using minimal-rate hold mode (dynamic conditions)"
+                title: "Battery Hold Mode"
+      # Default: use zero rate hold
+      default:
+        - service: script.turn_on
+          target:
+            entity_id: script.hold_battery_soc
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.battery_charging_active
+
+# =============================================================================
+# INTEGRATION NOTES
+# =============================================================================
+#
+# To integrate these examples into your system:
+#
+# 1. First, test the basic hold SOC scripts manually:
+#    - Run test_hold_soc_zero_rates
+#    - Monitor for 10 minutes
+#    - Verify battery stays steady
+#    - Run stop_hold_soc_test
+#
+# 2. Choose an example that fits your needs:
+#    - Example 1: Simple replacement of stop charging
+#    - Example 2: Add smart exit conditions
+#    - Example 3: Add safety time limits
+#    - Example 4: Adaptive based on conditions
+#
+# 3. Modify the example to match your specific setup:
+#    - Replace notification service with your device
+#    - Adjust trigger conditions to match your logic
+#    - Add any additional conditions or actions you need
+#
+# 4. Add to automations.yaml or test separately first
+#
+# 5. Monitor for 24-48 hours to verify proper operation
+#
+# 6. Adjust thresholds and conditions based on observed behavior
+#
+# =============================================================================
+# HELPER INPUT BOOLEAN (Optional)
+# =============================================================================
+#
+# You may want to add a new input_boolean to track hold mode:
+#
+# input_boolean:
+#   battery_holding_active:
+#     name: Battery Holding Active
+#     icon: mdi:battery-sync
+#     initial: false
+#
+# This allows you to distinguish between:
+# - battery_charging_active: Actively charging
+# - battery_holding_active: Holding at target SOC
+# - battery_no_discharging_active: Limiting discharge
+# - None active: Normal operation
+#
