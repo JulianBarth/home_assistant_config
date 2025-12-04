@@ -116,6 +116,9 @@
                 - condition: state
                   entity_id: binary_sensor.should_hold_battery_soc
                   state: "on"
+                - condition: state
+                  entity_id: input_boolean.battery_charging_active
+                  state: "on"
               sequence:
                 - service: script.turn_on
                   target:
