@@ -100,10 +100,11 @@ input_number:
     unit_of_measurement: "%"
 
   soc_hist:
-    name: SoC Histeriesis
+    name: SoC Hysteresis
     step: 0.5
-    min: 14
+    min: 0
     max: 25
+    initial: 5
     icon: mdi:thermometer
 
   # Grid capacity setting

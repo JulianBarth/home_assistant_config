@@ -27,26 +27,6 @@
         {% set state =  states('sensor.ChaSt') %}
         {{ mapper[state] if state in mapper else 'Unknown' }}
 
-# Helper sensors for charging decision logic
-- sensor:
-    - name: "Battery SoC Threshold High"
-      unique_id: battery_soc_threshold_high
-      unit_of_measurement: "%"
-      state: >
-        {{ (states('input_number.soc_target_low_sun') | float(default=50)) - (states('input_number.soc_hist') | float(default=5)) }}
-
-    - name: "Battery SoC Threshold Low"
-      unique_id: battery_soc_threshold_low
-      unit_of_measurement: "%"
-      state: >
-        {{ (states('input_number.soc_target_very_low_sun') | float(default=90)) - (states('input_number.soc_hist') | float(default=5)) }}
-
-    - name: "Battery SoC Normalized"
-      unique_id: battery_soc_normalized
-      unit_of_measurement: "%"
-      state: >
-        {{ states('sensor.reading_energy_battery_soc_scaled') | float(default=0) / 100 }}
-
 # Binary sensors for solar forecast conditions
 - binary_sensor:
     - name: "Expected Sun Low"
@@ -60,14 +40,6 @@
       device_class: power
       state: >
         {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=50000) <= states('input_number.sun_threshold_very_low') | float(default=8000) }}
-
-    - name: "Charging Is Profitable"
-      unique_id: charging_is_profitable
-      icon: mdi:cash-check
-      state: >
-        {% set current_price = states('sensor.tibber_energy_prices') | float(default=0) %}
-        {% set max_price_24h = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
-        {{ max_price_24h > (current_price * 1.15) }}
 
 # Binary sensor for charging conditions
 - binary_sensor:
@@ -308,11 +280,7 @@
         
         {% set total_dc = dc1 + dc2 %}
         
-        {% if sf >= 0 %}
-          {{ (total_dc * (10 ** sf)) | round(0) }}
-        {% else %}
-          {{ (total_dc * (10 ** sf)) | round(0) }}
-        {% endif %}
+        {{ (total_dc * (10 ** sf)) | round(0) }}
 
     - name: "Fronius Debug"
       unique_id: fronius_debug
@@ -413,7 +381,8 @@
       icon: mdi:battery-arrow-down
       state: >
         {% set current_price = states('sensor.tibber_energy_prices') | float(default=0) %}
-        {% set avg_price = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) / 100 %}
+        {% set avg_price_cents = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
+        {% set avg_price = avg_price_cents / 100 %}
         {% set battery_soc = states('sensor.batterie_soc') | float(default=0) %}
         {% set car_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
 
