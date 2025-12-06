@@ -117,26 +117,37 @@
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {# Default 100 represents maximum target (100% SOC) as fallback #}
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
+        {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
         
-        {# Hold threshold: ±2% range around target #}
-        {# Scaling: multiply by 100 because sensor.reading_energy_battery_soc_scaled uses 100 units = 1% #}
-        {# Note: This value appears in multiple templates; Home Assistant YAML doesn't support global constants #}
-        {% set hold_threshold = 2 * 100 %}
+        {# Hold threshold: ±3% range around target (wider to prevent cycling) #}
+        {% set hold_threshold = 3 * 100 %}
         
-        {# Hysteresis for stop charging (same calculation as should_stop_charging) #}
-        {# Scaling: multiply by 50 because input_number.soc_hist uses different scale #}
-        {# Note: This value appears in multiple templates; Home Assistant YAML doesn't support global constants #}
+        {# Hysteresis for stop charging #}
         {% set stop_hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
         
-        {# Hold SOC when: #}
-        {# 1. Battery is within ±2% of target AND #}
-        {# 2. Battery hasn't exceeded the stop threshold AND #}
-        {# 3. Charging was previously active (to maintain target) #}
+        {# Hold SOC when: Battery is within ±3% of target AND charging was active #}
         {% set at_target = (current_soc >= (target_soc - hold_threshold)) and (current_soc <= (target_soc + hold_threshold)) %}
         {% set below_stop_threshold = current_soc < (target_soc + stop_hysteresis) %}
         
         {{ at_target and below_stop_threshold and charging_active }}
+
+    - name: "Should Prevent Discharge"
+      unique_id: should_prevent_discharge
+      icon: mdi:battery-lock-open
+      state: >
+        {# Prevent discharging when battery is at or near computed target SoC #}
+        {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
+        {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
+        {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+        {% set hold_active = is_state('binary_sensor.should_hold_battery_soc', 'on') %}
+        
+        {# Buffer zone: prevent discharge if within 5% above target #}
+        {% set buffer = 5 * 100 %}
+        {% set at_or_near_target = (current_soc >= computed_target) and (current_soc <= (computed_target + buffer)) %}
+        
+        {# Prevent discharge when: at target and (charging was active OR hold mode active) #}
+        {{ at_or_near_target and (charging_active or hold_active) }}
 
 # Stable car charging detection with hysteresis
 - binary_sensor:
@@ -180,7 +191,7 @@
           Normal
         {% endif %}
 
-# Computed target SoC sensor
+# Computed target SoC sensor - factors in expected solar production
 - sensor:
     - name: "Computed Target SoC"
       unique_id: computed_target_soc
@@ -189,33 +200,52 @@
         {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
         {% set expected_sun_very_low = is_state('binary_sensor.expected_sun_very_low', 'on') %}
         {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
-
-        {# Profitability Check: Max Price > Current Price * 1.15 #}
-        {# Note: tibber_energy_prices is in EUR, others in Cents. Convert to Cents. #}
+        {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
+        
+        {# Expected solar contribution to SoC #}
+        {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) %}
+        {% set battery_capacity_wh = states('input_number.battery_capacity_wh') | float(default=10000) %}
+        {% set expected_solar_soc = (expected_solar_wh / battery_capacity_wh * 100) | round(0) %}
+        {% set current_soc = states('sensor.batterie_soc') | float(default=15) %}
+        
+        {# Default and configurable targets #}
+        {% set default_target = states('input_number.soc_target_default') | float(default=15) %}
+        
+        {# Trend Check: Don't charge if price is falling (next hour is cheaper) #}
         {% set current_price_eur = states('sensor.tibber_energy_prices') | float(default=0) %}
         {% set current_price_cents = current_price_eur * 100 %}
-        {% set max_price_24h = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
-        {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
-
-        {# Trend Check: Don't charge if price is falling (next hour is cheaper) #}
         {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
         {% set is_falling = next_price_cents < current_price_cents %}
+        
         {% if not is_profitable %}
-          {{ states('input_number.soc_target_default') | float(default=15) }}
-        {% elif percentile <= 25 and not is_falling %}
-          {# Cheap Energy: Fill based on Sun Forecast #}
+          {# Not profitable: just maintain minimum SoC #}
+          {{ default_target }}
+        {% elif percentile <= 15 and not is_falling %}
+          {# Very cheap energy: charge more aggressively based on sun forecast #}
           {% if expected_sun_very_low %}
             100
           {% elif expected_sun_low %}
+            {# Charge to compensate for low sun - target = 100% minus what sun will add #}
+            {{ [100 - (expected_solar_soc * 0.7), 80] | min | round(0) }}
+          {% else %}
+            {# Good sun expected: charge less, just enough buffer #}
+            {{ [default_target + 15, 40] | min }}
+          {% endif %}
+        {% elif percentile <= 35 and not is_falling %}
+          {# Moderately cheap: charge based on sun deficit #}
+          {% if expected_sun_very_low %}
+            90
+          {% elif expected_sun_low %}
             70
           {% else %}
-            {{ states('input_number.soc_target_default') | float(default=15) }}
+            {{ default_target }}
           {% endif %}
         {% elif percentile <= 50 and expected_sun_very_low and not is_falling %}
-          {# Moderate Price + Very Low Sun: Top up a bit #}
+          {# Mid-range price but very low sun: top up a bit #}
           60
         {% else %}
-          {{ states('input_number.soc_target_default') | float(default=15) }}
+          {# Normal/expensive prices: maintain minimum #}
+          {{ default_target }}
         {% endif %}
 
 # Balcony Power Plant (Balkonkraftwerk) Sensors

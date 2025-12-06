@@ -145,6 +145,17 @@ input_number:
     step: 1
     unit_of_measurement: "min"
     icon: mdi:timer-outline
+
+  # Battery capacity for solar-to-SoC calculations
+  battery_capacity_wh:
+    name: Battery Capacity
+    initial: 10000
+    min: 1000
+    max: 50000
+    step: 100
+    unit_of_measurement: "Wh"
+    icon: mdi:battery-high
+
 sensor:
   - platform: rest
     name: Tibber Prices
