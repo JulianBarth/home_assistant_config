@@ -132,22 +132,22 @@ forced_full_recharge:
 
 hold_battery_soc:
   alias: "Hold Battery SOC"
-  description: "Hold battery at current SOC by minimizing charge/discharge rates (more efficient than alternating)"
+  description: "Hold battery at target SOC by preventing discharge while allowing solar charging"
   sequence:
-    # OutWRte - Set discharge to 1% (minimal discharge)
+    # OutWRte - Set discharge to 1% (minimal discharge - prevents battery from draining)
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
         value: 100
-    # InWRte - Set charge to 1% (minimal charge)
+    # InWRte - Set charge to 100% (allow full charging from solar)
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40366
-        value: 100
+        value: 10000
     # Enable storage control mode
     - action: switch.turn_on
       target:
@@ -160,7 +160,7 @@ hold_battery_soc:
 
 test_hold_soc_enable:
   alias: "TEST: Enable Hold SOC"
-  description: "Test script to enable hold SOC mode - Battery should enter HOLDING state (ChaSt=6)"
+  description: "Test script to enable hold SOC mode - Prevents discharge while allowing solar charging"
   sequence:
     # First, enable storage control mode
     - action: switch.turn_on
@@ -168,13 +168,13 @@ test_hold_soc_enable:
         entity_id: switch.StorCtl_Mod
     - delay:
         seconds: 2
-    # Set minimal charge and discharge rates to hold SOC
+    # Set discharge to minimal (1%) but allow full charging from solar
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
-        value: 100  # 1% discharge
+        value: 100  # 1% discharge - prevents draining
     - delay:
         seconds: 1
     - service: modbus.write_register
@@ -182,7 +182,7 @@ test_hold_soc_enable:
         hub: fronius1
         unit: 1
         address: 40366
-        value: 100  # 1% charge
+        value: 10000  # 100% charge - allows solar charging
     - delay:
         seconds: 2
     # Notify user to check battery state
@@ -193,14 +193,15 @@ test_hold_soc_enable:
           Hold SOC mode has been activated.
           
           **Expected behavior:**
-          - Battery should stop charging/discharging
-          - Charging State (ChaSt) should show "HOLDING" (value 6)
-          - Battery SoC should remain relatively stable
+          - Battery should not discharge below target
+          - Battery CAN charge from solar power when available
+          - Charging State (ChaSt) may show "CHARGING" when solar charges battery
+          - Battery SoC should remain at or above target level
           
           **Check the following sensors:**
-          - sensor.charging_state (should be "HOLDING")
-          - sensor.batterie_soc (should be stable)
-          - sensor.battery_power (should be near 0W)
+          - sensor.charging_state (should be "HOLDING" or "CHARGING" with solar)
+          - sensor.batterie_soc (should not drop below target)
+          - sensor.battery_power (should be 0W or positive when solar charges)
           
           **Next steps:**
           1. Monitor for 5-10 minutes

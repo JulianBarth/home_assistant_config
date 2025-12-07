@@ -14,10 +14,11 @@ Run these scripts in order:
 ### 2. What to Expect
 
 When hold is active:
-- **Charging State**: "HOLDING" (ChaSt = 6)
-- **Battery Power**: ~0W (±100W is normal)
-- **SoC**: Stable (±1% over 10 minutes)
+- **Charging State**: "CHARGING" (with solar) or "HOLDING" (without solar)
+- **Battery Power**: ~0W when no solar, positive when solar charges
+- **SoC**: Stable or increasing (if solar available)
 - **StorCtl_Mod**: ON
+- **Discharge**: Prevented (stays at or above target)
 
 ## Available Scripts
 
@@ -34,8 +35,8 @@ When hold is active:
 |----------|------|------------|--------------|
 | 40358 | StorCtl_Mod | 3 (ON) | 0 (OFF) |
 | 40365 | OutWRte (discharge) | 100 (1%) | 10000 (100%) |
-| 40366 | InWRte (charge) | 100 (1%) | 10000 (100%) |
-| 40364 | ChaSt (state) | 6 (HOLDING) | 1/3/4/5 |
+| 40366 | InWRte (charge) | 10000 (100%) | 10000 (100%) |
+| 40364 | ChaSt (state) | 4/6 (CHARGING/HOLDING) | 1/3/4/5 |
 
 ## Integration Template
 
@@ -60,8 +61,8 @@ Add to automations.yaml:
 
 | Problem | Solution |
 |---------|----------|
-| Not entering HOLDING | Check Modbus connection, run test scripts |
-| SoC still changes | Normal if solar/consumption active |
+| Not entering HOLDING | Normal - battery may show CHARGING when solar is available |
+| SoC increasing | Expected - solar power charges battery while preventing discharge |
 | Can't disable | Run `test_hold_soc_disable` or toggle StorCtl_Mod |
 
 ## Benefits
@@ -93,11 +94,11 @@ Add to automations.yaml:
 
 Watch these sensors during testing:
 
-- `sensor.charging_state` → Should be "HOLDING"
-- `sensor.batterie_soc` → Should be stable
-- `sensor.battery_power` → Should be ~0W
+- `sensor.charging_state` → "CHARGING" with solar or "HOLDING" without
+- `sensor.batterie_soc` → Stable or increasing (solar charging)
+- `sensor.battery_power` → ~0W or positive (charging)
 - `switch.StorCtl_Mod` → Should be ON
-- `sensor.ChaSt` → Should be 6
+- `sensor.ChaSt` → May be 4 (charging) or 6 (holding)
 
 ## Next Steps
 

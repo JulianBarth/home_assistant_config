@@ -24,12 +24,12 @@ The hold SOC functionality uses Modbus registers to control the Fronius Gen24 Pl
 - **Register 40365 (OutWRte)**: Discharge rate in 0.01% increments
 - **Register 40366 (InWRte)**: Charge rate in 0.01% increments
 
-To hold the battery at current SoC:
+To hold the battery at target SoC while allowing solar charging:
 1. Enable external control (StorCtl_Mod = ON)
-2. Set discharge rate to 1% (value: 100)
-3. Set charge rate to 1% (value: 100)
+2. Set discharge rate to 1% (value: 100) - prevents discharge below target
+3. Set charge rate to 100% (value: 10000) - allows solar charging
 
-This minimal rate setting prevents significant charge/discharge cycles while maintaining the current SoC.
+This setting prevents the battery from discharging below target while still accepting solar power for charging.
 
 ## Testing Procedure
 
@@ -197,8 +197,8 @@ Once you've verified the hold SOC functionality works correctly:
 
 1. **Review the production script:** `script.hold_battery_soc`
 2. **Integrate into automations:** Update your battery control automations to use hold mode instead of cycling
-3. **Monitor efficiency:** Track battery cycles and energy losses over time
-4. **Optimize settings:** Adjust minimal charge/discharge rates if needed (100 = 1% is a good starting point)
+3. **Monitor efficiency:** Track battery cycles and solar charging during hold mode
+4. **Optimize settings:** The discharge rate of 1% prevents drain while 100% charge rate allows solar charging
 
 ## Integration Example
 
@@ -224,9 +224,9 @@ To integrate hold SOC into your battery automation:
 | Register | Name | Description | Hold Mode Value |
 |----------|------|-------------|----------------|
 | 40358 | StorCtl_Mod | Storage Control Mode | 3 (external control) |
-| 40365 | OutWRte | Discharge Rate | 100 (1%) |
-| 40366 | InWRte | Charge Rate | 100 (1%) |
-| 40364 | ChaSt | Charging State | 6 (HOLDING) |
+| 40365 | OutWRte | Discharge Rate | 100 (1%) - prevents discharge |
+| 40366 | InWRte | Charge Rate | 10000 (100%) - allows solar charging |
+| 40364 | ChaSt | Charging State | 4 (CHARGING) or 6 (HOLDING) |
 
 ### Charging State Values
 
