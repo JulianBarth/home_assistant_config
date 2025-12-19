@@ -25,10 +25,10 @@ Result: Stable operation, minimal energy loss
 ### 1. Core Hold SOC Script (`hold_battery_soc`)
 
 A production-ready script that:
-- Sets charge rate to 1% (minimal)
-- Sets discharge rate to 1% (minimal)
+- Sets discharge rate to 1% (minimal) - prevents battery drain
+- Sets charge rate to 100% (full) - allows solar charging
 - Enables external battery control
-- Battery enters HOLDING state (ChaSt = 6)
+- Battery can accept solar power while preventing discharge below target
 
 **Location:** `scripts.yaml`, lines 127-145
 
@@ -60,8 +60,8 @@ Safe testing tools before production deployment:
 |----------|------|--------|-----------|---------|
 | 40358 | StorCtl_Mod | 0 (OFF) | 3 (ON) | Enable external control |
 | 40365 | OutWRte | 10000 (100%) | 100 (1%) | Discharge rate |
-| 40366 | InWRte | 10000 (100%) | 100 (1%) | Charge rate |
-| 40364 | ChaSt | 1/3/4/5 | 6 (HOLDING) | Battery state indicator |
+| 40366 | InWRte | 10000 (100%) | 10000 (100%) | Charge rate (allows solar) |
+| 40364 | ChaSt | 1/3/4/5 | 4/6 (CHARGING/HOLDING) | Battery state indicator |
 
 ### Battery States
 
