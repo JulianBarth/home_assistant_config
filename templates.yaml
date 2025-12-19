@@ -163,62 +163,126 @@
           Normal
         {% endif %}
 
-# Computed target SoC sensor - factors in expected solar production
+# Computed target SoC sensor - Smart algorithm based on consumption patterns and solar forecast
 - sensor:
     - name: "Computed Target SoC"
       unique_id: computed_target_soc
       unit_of_measurement: "%"
+      icon: mdi:battery-charging-wireless
       state: >
-        {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
-        {% set expected_sun_very_low = is_state('binary_sensor.expected_sun_very_low', 'on') %}
-        {% set expected_sun_low = is_state('binary_sensor.expected_sun_low', 'on') %}
-        {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
+        {# === CONFIGURATION INPUTS === #}
+        {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
+        {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=150) %}
+        {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=530) %}
+        {% set weekday_wake = states('input_number.weekday_wake_hour') | float(default=5.5) %}
+        {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
+        {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
+        {% set default_target = states('input_number.soc_target_default') | float(default=15) %}
+        {% set round_trip_efficiency = 0.90 %}
         
-        {# Expected solar contribution to SoC #}
+        {# === TIME CALCULATIONS === #}
+        {% set current_hour = now().hour + (now().minute / 60) %}
+        {% set is_weekend = now().weekday() >= 5 %}
+        {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
+        
+        {# === PRICE CONDITIONS === #}
+        {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
+        {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
+        {% set current_price_eur = states('sensor.tibber_energy_prices') | float(default=0) %}
+        {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
+        {% set is_falling = next_price_cents < (current_price_eur * 100) %}
+        
+        {# === SOLAR FORECAST === #}
         {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) %}
-        {% set battery_capacity_wh = states('input_number.battery_capacity_wh') | float(default=10000) %}
-        {% set expected_solar_soc = (expected_solar_wh / battery_capacity_wh * 100) | round(0) %}
         {% set current_soc = states('sensor.batterie_soc') | float(default=15) %}
         
-        {# Default and configurable targets #}
-        {% set default_target = states('input_number.soc_target_default') | float(default=15) %}
+        {# === CALCULATE HOURS UNTIL END OF DAY CYCLES === #}
+        {# Night period: current → wake_hour (if before wake) OR sleep_hour → midnight → wake_hour #}
+        {# Day period: wake_hour → sleep_hour #}
         
-        {# Trend Check: Don't charge if price is falling (next hour is cheaper) #}
-        {% set current_price_eur = states('sensor.tibber_energy_prices') | float(default=0) %}
-        {% set current_price_cents = current_price_eur * 100 %}
-        {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
-        {% set is_falling = next_price_cents < current_price_cents %}
-        
-        {% if not is_profitable %}
-          {# Not profitable: just maintain minimum SoC #}
-          {{ default_target }}
-        {% elif percentile <= 15 and not is_falling %}
-          {# Very cheap energy: charge more aggressively based on sun forecast #}
-          {% if expected_sun_very_low %}
-            100
-          {% elif expected_sun_low %}
-            {# Charge to compensate for low sun - target = 100% minus what sun will add #}
-            {{ [100 - (expected_solar_soc * 0.7), 80] | min | round(0) }}
-          {% else %}
-            {# Good sun expected: charge less, just enough buffer #}
-            {{ [default_target + 15, 40] | min }}
-          {% endif %}
-        {% elif percentile <= 35 and not is_falling %}
-          {# Moderately cheap: charge based on sun deficit #}
-          {% if expected_sun_very_low %}
-            90
-          {% elif expected_sun_low %}
-            70
-          {% else %}
-            {{ default_target }}
-          {% endif %}
-        {% elif percentile <= 50 and expected_sun_very_low and not is_falling %}
-          {# Mid-range price but very low sun: top up a bit #}
-          60
+        {% if current_hour < wake_hour %}
+          {# Currently in night period (early morning before wake) #}
+          {% set night_hours_remaining = wake_hour - current_hour %}
+          {% set day_hours_remaining = sleep_hour - wake_hour %}
+        {% elif current_hour < sleep_hour %}
+          {# Currently in day period #}
+          {% set night_hours_remaining = 0 %}
+          {% set day_hours_remaining = sleep_hour - current_hour %}
         {% else %}
-          {# Normal/expensive prices: maintain minimum #}
+          {# Currently in night period (after sleep_hour) → calculate until tomorrow wake #}
+          {% set night_hours_remaining = (24 - current_hour) + wake_hour %}
+          {% set day_hours_remaining = sleep_hour - wake_hour %}
+        {% endif %}
+        
+        {# === CONSUMPTION CALCULATION === #}
+        {% set expected_consumption_wh = (night_hours_remaining * night_rate) + (day_hours_remaining * day_rate) %}
+        
+        {# === ENERGY DEFICIT === #}
+        {# Energy needed = consumption - solar, accounting for battery efficiency #}
+        {% set usable_solar = expected_solar_wh * round_trip_efficiency %}
+        {% set energy_deficit_wh = expected_consumption_wh - usable_solar %}
+        
+        {# Convert deficit to SoC percentage #}
+        {% set deficit_soc = (energy_deficit_wh / battery_capacity * 100) | round(0) %}
+        {% set calculated_target = current_soc + deficit_soc %}
+        
+        {# === APPLY PRICE CONDITIONS === #}
+        {% if not is_profitable %}
+          {# Not profitable to charge: maintain minimum #}
+          {{ default_target }}
+        {% elif is_falling %}
+          {# Price is falling: don't charge now, wait for cheaper prices #}
+          {{ default_target }}
+        {% elif percentile <= 20 %}
+          {# Very cheap: charge to calculated target (capped at 100%) #}
+          {{ [[calculated_target, 100] | min, default_target] | max | round(0) }}
+        {% elif percentile <= 40 %}
+          {# Moderately cheap: charge to 80% of calculated target #}
+          {% set adjusted_target = current_soc + (deficit_soc * 0.8) %}
+          {{ [[adjusted_target, 90] | min, default_target] | max | round(0) }}
+        {% elif percentile <= 60 and energy_deficit_wh > (battery_capacity * 0.3) %}
+          {# Mid-range price but significant deficit: charge conservatively #}
+          {% set adjusted_target = current_soc + (deficit_soc * 0.5) %}
+          {{ [[adjusted_target, 70] | min, default_target] | max | round(0) }}
+        {% else %}
+          {# Expensive or no significant need: maintain minimum #}
           {{ default_target }}
         {% endif %}
+      attributes:
+        debug_info: >
+          {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
+          {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=150) %}
+          {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=530) %}
+          {% set weekday_wake = states('input_number.weekday_wake_hour') | float(default=5.5) %}
+          {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
+          {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
+          {% set current_hour = now().hour + (now().minute / 60) %}
+          {% set is_weekend = now().weekday() >= 5 %}
+          {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
+          {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) %}
+          {% if current_hour < wake_hour %}
+            {% set night_hours = wake_hour - current_hour %}
+            {% set day_hours = sleep_hour - wake_hour %}
+          {% elif current_hour < sleep_hour %}
+            {% set night_hours = 0 %}
+            {% set day_hours = sleep_hour - current_hour %}
+          {% else %}
+            {% set night_hours = (24 - current_hour) + wake_hour %}
+            {% set day_hours = sleep_hour - wake_hour %}
+          {% endif %}
+          {% set consumption = (night_hours * night_rate) + (day_hours * day_rate) %}
+          {% set deficit = consumption - (expected_solar_wh * 0.9) %}
+          {
+            "current_hour": {{ current_hour | round(1) }},
+            "is_weekend": {{ is_weekend }},
+            "wake_hour": {{ wake_hour }},
+            "night_hours_remaining": {{ night_hours | round(1) }},
+            "day_hours_remaining": {{ day_hours | round(1) }},
+            "expected_consumption_wh": {{ consumption | round(0) }},
+            "expected_solar_wh": {{ expected_solar_wh | round(0) }},
+            "energy_deficit_wh": {{ deficit | round(0) }},
+            "price_percentile": {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}
+          }
 
 # Balcony Power Plant (Balkonkraftwerk) Sensors
 - sensor:

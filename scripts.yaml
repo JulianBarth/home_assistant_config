@@ -384,8 +384,12 @@ set_dynamic_discharge_limit:
         unit: 1
         address: 40365
         value: >
-          {% set limit_percent = states('sensor.discharge_limit_percentage') | float(default=10) %}
-          {{ (limit_percent * 100) | int }}
+          {% set raw_value = states('sensor.discharge_limit_percentage') %}
+          {% if raw_value in ['unavailable', 'unknown', 'none', 'None'] %}
+            1000
+          {% else %}
+            {{ (raw_value | float(default=10) * 100) | int }}
+          {% endif %}
     - service: modbus.write_register
       data:
         hub: fronius1
