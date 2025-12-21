@@ -224,7 +224,7 @@
         
         {# Convert deficit to SoC percentage #}
         {% set deficit_soc = (energy_deficit_wh / battery_capacity * 100) | round(0) %}
-        {% set calculated_target = current_soc + deficit_soc %}
+        {% set calculated_target = default_target + deficit_soc %}
         
         {# === APPLY PRICE CONDITIONS === #}
         {% if not is_profitable %}
@@ -399,6 +399,8 @@
         {% set car_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
         {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
         {% set should_charge = is_state('binary_sensor.should_start_charging', 'on') %}
+        {% set is_charging = is_state('input_boolean.battery_charging_active', 'on') %}
+        {% set should_stop = is_state('binary_sensor.should_stop_charging', 'on') %}
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
         {% set manual_charge = is_state('input_boolean.manual_battery_charge', 'on') %}
         {% set should_charge_during_car = is_state('binary_sensor.should_charge_battery_during_car_charging', 'on') %}
@@ -407,12 +409,12 @@
         {% if manual_charge %}
           manual_charging
         {% elif car_charging and wallbox_not_eco and automation_on %}
-          {% if should_charge and should_charge_during_car %}
+          {% if (should_charge or is_charging) and should_charge_during_car %}
             car_and_battery_charging
           {% else %}
             car_charging_only
           {% endif %}
-        {% elif should_charge and automation_on %}
+        {% elif (should_charge or (is_charging and not should_stop)) and automation_on %}
           battery_charging
         {% else %}
           normal
