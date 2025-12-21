@@ -122,10 +122,18 @@
                 - condition: state
                   entity_id: input_boolean.battery_charging_active
                   state: "on"
+                # Prevent re-executing hold script every 5 minutes if already in hold mode
+                - condition: state
+                  entity_id: input_boolean.battery_no_discharging_active
+                  state: "off"
               sequence:
                 - service: script.turn_on
                   target:
                     entity_id: script.hold_battery_soc
+                # Set flag to indicate we're in hold/limited discharge mode
+                - service: input_boolean.turn_on
+                  target:
+                    entity_id: input_boolean.battery_no_discharging_active
             # NEW: Prevent discharge when at target SoC (keep battery at desired level)
             - conditions:
                 - condition: state
@@ -139,6 +147,10 @@
                 - service: switch.turn_on
                   target:
                     entity_id: switch.StorCtl_Mod
+                # Set flag for state consistency (Bug 2 fix)
+                - service: input_boolean.turn_on
+                  target:
+                    entity_id: input_boolean.battery_no_discharging_active
             # Check if we should stop charging
             - conditions:
                 - condition: state

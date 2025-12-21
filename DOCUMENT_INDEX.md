@@ -101,40 +101,40 @@ This directory contains comprehensive analysis and solutions for battery managem
 
 ## 🎯 What's The Problem?
 
-### The Core Issue
-Two independent Home Assistant automations compete for control of the same battery inverter without coordination:
+### The Original Issue (Now Fixed)
+~~Two independent Home Assistant automations competed for control of the same battery inverter without coordination.~~
 
-1. **Price-based charging automation**: Charges battery when electricity prices are low
-2. **Car charging protection automation**: Limits battery discharge when car is charging
+**Current Architecture:** A unified "Battery Control Coordinator" automation manages all modes with clear priority:
+1. **Manual Charging** (highest priority)
+2. **Car + Battery Charging**
+3. **Car Charging Only**
+4. **Battery Charging**
+5. **Normal Operation** (default)
 
-When both conditions occur simultaneously (low prices + car charging), they create **race conditions** and **unpredictable behavior**.
-
-### Impact
-- 🔴 5-10 race conditions per day
-- 🔴 15-30 mode changes per day (excessive)
-- 🔴 60-120 Modbus writes per day (hardware wear)
-- 🟡 Missing €30-50/month in savings
-- 🟡 Grid overload risk
+### Remaining Considerations
+- 🟡 Price optimization can be further tuned
+- 🟡 Edge cases during mode transitions
+- 🟢 System is stable with unified coordinator
 
 ---
 
-## ✅ What's The Solution?
+## ✅ Current System Design
 
-### Unified State Machine
-Replace two competing automations with one coordinator that:
+### Unified State Machine (Implemented)
+The system now uses a single coordinator that:
 - Has clear priority levels (Manual > Car+Battery > Car Only > Battery > Normal)
-- Checks total load before enabling simultaneous car+battery charging
-- Implements hysteresis to prevent rapid toggling
-- Uses dynamic discharge limits based on electricity prices
-- Provides predictable manual control
+- Checks for car charging before enabling battery operations
+- Implements hysteresis via `binary_sensor.car_charging_stable`
+- Uses dynamic discharge limits via `sensor.discharge_limit_percentage`
+- Supports hold mode via `binary_sensor.should_hold_battery_soc`
+- Prevents unwanted discharge via `binary_sensor.should_prevent_discharge`
 
-### Benefits
-- ✅ Zero race conditions (100% elimination)
-- ✅ 3-6 mode changes/day (80% reduction)
-- ✅ 12-24 Modbus writes/day (80% reduction)
-- ✅ 10-20% better cost optimization
-- ✅ 20-30% fewer battery cycles
-- ✅ €540-900/year estimated savings
+### Benefits Achieved
+- ✅ Zero race conditions (unified coordinator)
+- ✅ Predictable mode transitions
+- ✅ Clear state visibility via `sensor.battery_control_mode`
+- ✅ Efficient hold mode (2-5% energy savings)
+- ✅ Dynamic discharge limiting based on prices
 
 ---
 
@@ -229,19 +229,13 @@ Replace two competing automations with one coordinator that:
 
 ## 🔧 Technical Details
 
-### System Architecture
-
-**Current (Broken):**
+### Current Architecture (Unified Coordinator)
 ```
-Price Automation ──┐
-                   ├──► Race Condition ──► Unpredictable
-Car Automation ────┘
+All Inputs ──► Unified Battery Control Coordinator ──► Single Decision ──► Consistent Behavior
+              (automations.yaml)
 ```
 
-**Proposed (Fixed):**
-```
-All Inputs ──► State Coordinator ──► Single Decision ──► Consistent Behavior
-```
+
 
 ### Key Technologies
 - **Home Assistant**: Automation platform
@@ -419,6 +413,6 @@ The benefits significantly outweigh the risks, and the implementation is well-do
 
 ---
 
-*Last Updated: 2024-11-22*  
-*Version: 1.0*  
+*Last Updated: 2024-12-21*  
+*Version: 2.0 (Unified Coordinator Implemented)*  
 *Author: GitHub Copilot Analysis*

@@ -4,8 +4,6 @@ This project is licensed under the BSD-3-Clause License. See `LICENSE.txt` for m
 
 I've incorporated suggestions from many people throughout the code. Thanks to everyone who contributed their ideas!
 
-This project is licensed under the BSD-3-Clause License. See `LICENSE.txt` for more information.
-
 ## Project Intentions
 This project aims to automate the charging and discharging behavior of a basement battery system to optimize energy costs and maximize the usage of renewable energy. The key features include:
 
@@ -138,6 +136,16 @@ For anyone wanting to expand or improve the project, start by focusing on:
   - Improves energy efficiency by 2-5%
   - Extends battery lifespan through reduced cycle count
   - See `HOLD_SOC_INTEGRATION_COMPLETE.md` for full details
+- **Prevent Discharge Mode** (December 2024): Keeps battery at target level
+  - Activates when battery reaches computed target SoC
+  - Prevents unwanted discharge after charging completes
+  - Uses `binary_sensor.should_prevent_discharge` to trigger
+- **Dynamic Discharge Limiting** (December 2024): Price-aware discharge control
+  - `sensor.discharge_limit_percentage` adjusts based on current price vs average
+  - Higher prices allow more discharge (up to 50% during very high prices)
+  - Protects battery during car charging (default 10% limit)
+  - See `script.set_dynamic_discharge_limit` for implementation
 
 Feel free to raise issues, suggest features, or contribute improvements.
 
+*Last Updated: December 2024*

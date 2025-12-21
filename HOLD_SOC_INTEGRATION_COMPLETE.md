@@ -11,14 +11,14 @@ The battery hold SOC mode has been successfully integrated into the Home Assista
 **Location:** `templates.yaml` (line ~113)
 
 This sensor detects when the battery should enter hold mode:
-- **Activates when:** Battery is within ±2% of target SOC AND charging is active AND hasn't exceeded stop threshold
+- **Activates when:** Battery is within ±3% of target SOC AND charging is active AND hasn't exceeded stop threshold
 - **Purpose:** Triggers the hold SOC mode before the battery exceeds the target enough to require stopping
 
 **Logic:**
 ```yaml
 Hold when:
-  - current_soc >= (target_soc - 200)  # Within 2% below target
-  - current_soc <= (target_soc + 200)  # Within 2% above target
+  - current_soc >= (target_soc - 300)  # Within 3% below target
+  - current_soc <= (target_soc + 300)  # Within 3% above target
   - current_soc < (target_soc + stop_hysteresis)  # Haven't exceeded stop threshold
   - charging_active == true  # Charging was previously active
 ```
@@ -83,14 +83,15 @@ Result: Minimal energy loss, battery held steady
 ## Technical Details
 
 ### Hold SOC Threshold
-- **Value:** ±2% around target SOC
-- **Calculation:** `2 * 100 = 200` (in scaled units)
-- **Example:** If target is 50% (5000 scaled), hold activates between 48% (4800) and 52% (5200)
+- **Value:** ±3% around target SOC
+- **Calculation:** `3 * 100 = 300` (in scaled units where 100 units = 1% SOC)
+- **Example:** If target is 50% (5000 scaled), hold activates between 47% (4700) and 53% (5300)
 
 ### Stop Charging Threshold
 - **Value:** target + hysteresis
 - **Calculation:** `target_soc + (soc_hist * 50)`
-- **Example:** If target is 50% (5000) and hysteresis is 5% (250 scaled), stop at 52.5% (5250)
+- **Note:** `soc_hist` default is 5, so hysteresis = 250 scaled units = 2.5% SOC
+- **Example:** If target is 50% (5000) and `soc_hist=5`, stop at 52.5% (5250)
 
 ### Register Configuration (from `script.hold_battery_soc`)
 - **Register 40365 (OutWRte):** Set to 100 (1% discharge rate)
@@ -253,7 +254,7 @@ If issues occur, the integration can be safely rolled back:
 1. ✅ **Code Complete** - Integration finished
 2. ⏳ **User Testing** - Deploy to Home Assistant and monitor
 3. ⏳ **Validation** - Verify hold mode activates correctly
-4. ⏳ **Tuning** - Adjust hold threshold if needed (currently ±2%)
+4. ⏳ **Tuning** - Adjust hold threshold if needed (currently ±3%)
 5. ⏳ **Documentation** - Update main README if desired
 
 ## References

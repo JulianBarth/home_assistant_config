@@ -2,6 +2,7 @@
 
 **Date:** November 22, 2024  
 **Revision:** Based on user clarification that grid load is managed automatically by the system
+**Implementation Status:** Most fixes implemented in unified coordinator (December 2024)
 
 ---
 
@@ -166,7 +167,9 @@ input_boolean.battery_no_discharging_active: 'on'  # From Automation 2
 
 ## Proposed Solutions
 
-### Solution for Issue #1 & #2: Add Car Charging Check to Price Automation
+### Solution for Issue #1 & #2: Add Car Charging Check to Price Automation ✅ IMPLEMENTED
+
+> **Status:** This solution has been implemented via the unified coordinator pattern in `automations.yaml` and the `binary_sensor.should_start_charging` sensor which checks car charging status.
 
 **Modify `binary_sensor.should_start_charging` (templates.yaml line 74-89):**
 
@@ -234,7 +237,9 @@ input_boolean.battery_no_discharging_active: 'on'  # From Automation 2
 
 ---
 
-### Solution for Issue #3: Explicit Policy for Simultaneous Charging
+### Solution for Issue #3: Explicit Policy for Simultaneous Charging ✅ IMPLEMENTED
+
+> **Status:** Implemented as `binary_sensor.should_charge_battery_during_car_charging` in `templates.yaml`.
 
 **Add new binary sensor for explicit decision:**
 
@@ -268,7 +273,9 @@ input_boolean.battery_no_discharging_active: 'on'  # From Automation 2
 
 ---
 
-### Solution for Issue #4: Add Hysteresis to Car Charging Detection
+### Solution for Issue #4: Add Hysteresis to Car Charging Detection ✅ IMPLEMENTED
+
+> **Status:** Implemented as `binary_sensor.car_charging_stable` in `templates.yaml` with 3-minute stability check.
 
 **Add time-based stability check:**
 
@@ -343,7 +350,9 @@ input_boolean.battery_no_discharging_active: 'on'  # From Automation 2
 
 ---
 
-### Solution for Issue #5: Unified Status Sensor
+### Solution for Issue #5: Unified Status Sensor ✅ IMPLEMENTED
+
+> **Status:** Implemented as `sensor.battery_control_status` and `sensor.battery_control_mode` in `templates.yaml`.
 
 **Add comprehensive status sensor:**
 

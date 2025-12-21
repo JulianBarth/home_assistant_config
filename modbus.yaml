@@ -103,7 +103,7 @@
       scan_interval: 5
       unit_of_measurement: W
       unique_id: 0986479e-d88d-4722-b70c-8f0f8b84bfd2
-    # OutWRte 40366
+    # OutWRte - Register 40365 (discharge rate, 0.01% increments)
     - name: percent_max_discharge_rte
       slave: 1
       data_type: int16
@@ -111,7 +111,7 @@
       scan_interval: 5
       unit_of_measurement: "%"
       unique_id: 9af951af-ad20-410b-8e3f-29c9e21702c3
-    # InWRte 40367
+    # InWRte - Register 40366 (charge rate, 0.01% increments)
     - name: percent_max_charge_rte
       slave: 1
       data_type: int16
