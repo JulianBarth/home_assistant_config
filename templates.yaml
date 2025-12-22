@@ -92,8 +92,8 @@
         {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
         
-        {# Hold threshold: ±3% range around target (wider to prevent cycling) #}
-        {% set hold_threshold = 3 * 100 %}
+        {# Hold threshold: configurable range around target (default ±3%) #}
+        {% set hold_threshold = states('input_number.battery_hold_threshold') | float(default=3) * 100 %}
         
         {# Hysteresis for stop charging #}
         {% set stop_hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
@@ -114,8 +114,8 @@
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
         {% set hold_active = is_state('binary_sensor.should_hold_battery_soc', 'on') %}
         
-        {# Buffer zone: prevent discharge if within 5% above target #}
-        {% set buffer = 5 * 100 %}
+        {# Buffer zone: prevent discharge if within configurable buffer above target #}
+        {% set buffer = states('input_number.battery_discharge_buffer') | float(default=5) * 100 %}
         {% set at_or_near_target = (current_soc >= computed_target) and (current_soc <= (computed_target + buffer)) %}
         
         {# Prevent discharge when: at target and (charging was active OR hold mode active) #}
@@ -141,6 +141,26 @@
           {{ (now_ts - last_changed) >= stable_seconds }}
         {% endif %}
 
+    - name: "Solcast Update Due"
+      unique_id: solcast_update_due
+      state: >
+        {% set nr = as_datetime(state_attr('sun.sun','next_rising')) | as_local %}
+        {% set ns = as_datetime(state_attr('sun.sun','next_setting')) | as_local %}
+        {% set api_request_limit = 10 %}
+        {% if nr > ns %}
+          {% set nr = nr - timedelta(hours = 24) %}
+        {% endif %}
+        {% set hours_difference = (ns - nr) %}
+        {% set interval_hours = hours_difference / api_request_limit %}
+        {% set ns = namespace(match = false) %}
+        {% for i in range(api_request_limit) %}
+          {% set start_time = nr + (i * interval_hours) %}
+          {% if ((start_time - timedelta(seconds=30)) <= now()) and (now() <= (start_time + timedelta(seconds=30))) %}
+            {% set ns.match = true %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.match }}
+
 # Unified status sensor for monitoring
 - sensor:
     - name: "Battery Control Status"
@@ -164,11 +184,9 @@
         {% endif %}
 
 # Computed target SoC sensor - Smart algorithm based on consumption patterns and solar forecast
-- sensor:
-    - name: "Computed Target SoC"
-      unique_id: computed_target_soc
-      unit_of_measurement: "%"
-      icon: mdi:battery-charging-wireless
+    - name: "Battery Optimization Data"
+      unique_id: battery_optimization_data
+      icon: mdi:chart-timeline-variant
       state: >
         {# === CONFIGURATION INPUTS === #}
         {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
@@ -226,7 +244,7 @@
         {% set deficit_soc = (energy_deficit_wh / battery_capacity * 100) | round(0) %}
         {% set calculated_target = default_target + deficit_soc %}
         
-        {# === APPLY PRICE CONDITIONS === #}
+        {# === FINAL TARGET CALCULATION === #}
         {% if not is_profitable %}
           {# Not profitable to charge: maintain minimum #}
           {{ default_target }}
@@ -249,7 +267,9 @@
           {{ default_target }}
         {% endif %}
       attributes:
-        debug_info: >
+        calculation_data: >
+          {# Re-calculating essential vars for debug view #}
+          {# Note: Limited duplication remains unavoidable in standard templates for attributes #}
           {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
           {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=150) %}
           {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=530) %}
@@ -260,6 +280,7 @@
           {% set is_weekend = now().weekday() >= 5 %}
           {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
           {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) %}
+          
           {% if current_hour < wake_hour %}
             {% set night_hours = wake_hour - current_hour %}
             {% set day_hours = sleep_hour - wake_hour %}
@@ -270,8 +291,10 @@
             {% set night_hours = (24 - current_hour) + wake_hour %}
             {% set day_hours = sleep_hour - wake_hour %}
           {% endif %}
+          
           {% set consumption = (night_hours * night_rate) + (day_hours * day_rate) %}
           {% set deficit = consumption - (expected_solar_wh * 0.9) %}
+          
           {
             "current_hour": {{ current_hour | round(1) }},
             "is_weekend": {{ is_weekend }},
@@ -283,6 +306,16 @@
             "energy_deficit_wh": {{ deficit | round(0) }},
             "price_percentile": {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}
           }
+
+    - name: "Computed Target SoC"
+      unique_id: computed_target_soc
+      unit_of_measurement: "%"
+      icon: mdi:battery-charging-wireless
+      state: >
+        {{ states('sensor.battery_optimization_data') | float(default=15) }}
+      attributes:
+        debug_info: >
+          {{ state_attr('sensor.battery_optimization_data', 'calculation_data') }}
 
 # Balcony Power Plant (Balkonkraftwerk) Sensors
 - sensor:
