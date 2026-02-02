@@ -928,3 +928,194 @@
           {% if unavailable | length == 0 %}
             No issues detected. Sankey chart should display correctly.
           {% endif %}
+
+# ============================================================================
+# Tibber Price Sensors (Migrated from deprecated platform: template syntax)
+# ============================================================================
+- sensor:
+    - name: "Tibber Energy Lowest Price Next 24 Hours"
+      unique_id: tibber_energy_lowest_price_next_24_hours
+      unit_of_measurement: "Cent/kWh"
+      icon: mdi:currency-eur
+      state: >
+        {% set current_time = now() %}
+        {% set end_time = current_time + timedelta(hours=24) %}
+        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+        {% if combined_prices %}
+          {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
+          {% if future_prices | length > 0 %}
+            {{ (future_prices | map(attribute='total') | min * 100) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% else %}
+          unknown
+        {% endif %}
+
+    - name: "Tibber Energy Lowest Price Next 12 Hours"
+      unique_id: tibber_energy_lowest_price_next_12_hours
+      unit_of_measurement: "Cent/kWh"
+      icon: mdi:currency-eur
+      state: >
+        {% set current_time = now() %}
+        {% set end_time = current_time + timedelta(hours=12) %}
+        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+        {% if combined_prices %}
+          {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
+          {% if future_prices | length > 0 %}
+            {{ (future_prices | map(attribute='total') | min * 100) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% else %}
+          unknown
+        {% endif %}
+
+    - name: "Tibber Energy Price Next Hour"
+      unique_id: tibber_energy_price_next_hour
+      unit_of_measurement: "Cent/kWh"
+      icon: mdi:currency-eur
+      state: >
+        {% set current_time = now() %}
+        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+        {% if combined_prices %}
+          {% set next_interval_prices = combined_prices | selectattr('startsAt', '>', current_time.isoformat()) | list %}
+          {% if next_interval_prices | length > 0 %}
+            {{ (next_interval_prices[0].total * 100) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% else %}
+          unknown
+        {% endif %}
+
+    - name: "Tibber Energy Highest Price Next 24 Hours"
+      unique_id: tibber_energy_highest_price_next_24_hours
+      unit_of_measurement: "Cent/kWh"
+      icon: mdi:currency-eur
+      state: >
+        {% set current_time = now() %}
+        {% set end_time = current_time + timedelta(hours=24) %}
+        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+        {% if combined_prices %}
+          {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
+          {% if future_prices | length > 0 %}
+            {{ (future_prices | map(attribute='total') | max * 100) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% else %}
+          unknown
+        {% endif %}
+
+    - name: "Tibber Energy Average Price Next 12 Hours"
+      unique_id: tibber_energy_average_price_next_12_hours
+      unit_of_measurement: "Cent/kWh"
+      icon: mdi:currency-eur
+      state: >
+        {% set current_time = now() %}
+        {% set end_time = current_time + timedelta(hours=12) %}
+        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+        {% if combined_prices %}
+          {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
+          {% if future_prices | length > 0 %}
+            {{ ((future_prices | map(attribute='total') | sum) / (future_prices | length) * 100) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% else %}
+          unknown
+        {% endif %}
+
+    - name: "Tibber Energy Price Percentile Next 12 Hours"
+      unique_id: tibber_energy_price_percentile_next_12_hours
+      unit_of_measurement: "%"
+      icon: mdi:percent
+      state: >
+        {% set current_time = now() %}
+        {% set end_time = current_time + timedelta(hours=12) %}
+        {% set current_price = states('sensor.tibber_energy_prices') | float(default=0) %}
+        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+
+        {% if combined_prices and current_price != 'unknown' %}
+          {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | map(attribute='total') | list %}
+          {% if future_prices | length > 0 %}
+            {% set lower_count = future_prices | select('<', current_price) | list | length %}
+            {{ ((lower_count / future_prices | length) * 100) | round(0) }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% else %}
+          unknown
+        {% endif %}
+
+# ============================================================================
+# Price Binary Sensors (Migrated from deprecated platform: template syntax)
+# ============================================================================
+- binary_sensor:
+    - name: "Price Is Lowest"
+      unique_id: price_is_lowest
+      icon: mdi:cash-minus
+      state: >
+        {% set lowest_price_24_hours = states('sensor.tibber_energy_lowest_price_next_24_hours') | float(default=999) %}
+        {% set current_price = (states('sensor.tibber_energy_prices') | float(default=999)) * 100 %}
+        {% set price_tolerance = 3 %}
+        {% if lowest_price_24_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
+          true
+        {% else %}
+          false
+        {% endif %}
+
+    - name: "Price Is Lower Than Next Interval"
+      unique_id: price_is_lower_than_next_hour
+      icon: mdi:arrow-down-bold
+      state: >
+        {% if states('sensor.tibber_energy_price_next_hour') | float(default=999) > (((states('sensor.tibber_energy_prices') | float(default=999))*100)) %}
+          true
+        {% else %}
+          false
+        {% endif %}
+
+    - name: "Price Is Lowest 12 Hours"
+      unique_id: price_is_lowest_12_hours
+      icon: mdi:cash-minus
+      state: >
+        {% set lowest_price_12_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float(default=999) %}
+        {% set current_price = (states('sensor.tibber_energy_prices') | float(default=999)) * 100 %}
+        {% set price_tolerance = 3 %}
+        {% if lowest_price_12_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
+          true
+        {% else %}
+          false
+        {% endif %}
+
+    - name: "Price in Bottom 25%"
+      unique_id: price_is_in_bottom_25_percent
+      icon: mdi:percent-box
+      state: >
+        {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
+        {{ percentile <= 25 }}
+
+    - name: "Tibber Pulse Not Functioning"
+      unique_id: tibber_pulse_not_functioning
+      device_class: problem
+      icon: mdi:alert-circle
+      state: >
+        {{ states('sensor.tibber_pulse_luftehutte_stromerzeugung') in ['unavailable', 'unknown', 'None'] }}
