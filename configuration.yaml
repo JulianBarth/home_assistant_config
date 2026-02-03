@@ -178,7 +178,7 @@ input_number:
   # Smart charging algorithm parameters
   daily_consumption_wh:
     name: Daily Consumption (All Day)
-    initial: 10000
+    initial: 14000
     min: 1000
     max: 50000
     step: 100
@@ -187,18 +187,18 @@ input_number:
 
   night_consumption_rate_wh:
     name: Night Consumption Rate (22:00-wake)
-    initial: 150
+    initial: 280
     min: 50
-    max: 500
+    max: 600
     step: 10
     unit_of_measurement: "Wh/h"
     icon: mdi:sleep
 
   day_consumption_rate_wh:
     name: Day Consumption Rate (wake-22:00)
-    initial: 530
+    initial: 850
     min: 200
-    max: 1500
+    max: 2000
     step: 10
     unit_of_measurement: "Wh/h"
     icon: mdi:run
@@ -229,6 +229,26 @@ input_number:
     step: 0.5
     unit_of_measurement: "h"
     icon: mdi:power-sleep
+
+  # Price ceiling for charging decisions
+  max_charge_price_cents:
+    name: Maximum Charging Price
+    initial: 25
+    min: 0
+    max: 50
+    step: 1
+    unit_of_measurement: "Cent/kWh"
+    icon: mdi:currency-eur
+
+  # Low solar threshold for winter mode detection
+  low_solar_threshold_wh:
+    name: Low Solar Forecast Threshold
+    initial: 3000
+    min: 500
+    max: 10000
+    step: 500
+    unit_of_measurement: "Wh"
+    icon: mdi:weather-sunny-off
 
 sensor:
   - platform: rest
