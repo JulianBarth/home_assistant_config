@@ -1,9 +1,10 @@
 # Project: Home Assistant Battery Management System
 
 ## General Information
-- Assume daily consumption of 10 kWh
-- In addition charging of the EV may take place in parallel
-- The electricity price is variable and changes every 15 minutes (German electricity zone)
+- 5-person household in Germany
+- Daily consumption: ~14 kWh (varies seasonally)
+- Hybrid car charging adds variable load
+- The electricity price is variable and changes every 15 minutes (German electricity zone via Tibber)
 
 ## System Architecture
 
@@ -56,14 +57,21 @@ Single automation that coordinates all battery control modes with clear priority
 | `soc_target_default` | 15% | Minimum SoC to maintain |
 | `soc_hist` | 5 | Hysteresis buffer (prevents cycling) |
 
-### Consumption Patterns
+### Consumption Patterns (5-person household)
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `night_consumption_rate_wh` | 150 Wh/h | Consumption during sleep hours |
-| `day_consumption_rate_wh` | 530 Wh/h | Consumption during active hours |
+| `daily_consumption_wh` | 14000 Wh | Total daily consumption |
+| `night_consumption_rate_wh` | 280 Wh/h | Consumption during sleep hours |
+| `day_consumption_rate_wh` | 850 Wh/h | Consumption during active hours |
 | `weekday_wake_hour` | 5.5 | Wake time on weekdays |
 | `weekend_wake_hour` | 7.5 | Wake time on weekends |
 | `sleep_hour` | 22 | Time when high consumption ends |
+
+### Price Controls
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_charge_price_cents` | 25 | Never charge above this price (ct/kWh) |
+| `low_solar_threshold_wh` | 3000 | Solar forecast below this triggers "winter mode" |
 
 ## Modbus Registers
 
@@ -90,11 +98,20 @@ Single automation that coordinates all battery control modes with clear priority
 
 ## Algorithm Overview
 
-The charging algorithm uses multiple factors:
-1. **Price Analysis**: Current price vs. 12-hour average and percentile
-2. **Solar Forecast**: Expected remaining production today
-3. **Consumption Prediction**: Based on time of day and weekday/weekend
-4. **Energy Deficit**: Calculated need for grid charging
+The charging algorithm uses multiple factors with priority-based decisions:
+
+1. **Negative Price Detection**: Always charge to 100% on negative prices
+2. **Price Ceiling**: Never charge above `max_charge_price_cents`
+3. **Profitability Check**: Spread between buy/sell must exceed wear cost
+4. **Price Falling Detection**: Wait for lower prices (unless in bottom 10%)
+5. **Price Percentile Tiers**:
+   - ≤10%: Aggressive charging (+20% SoC above calculated need)
+   - ≤25%: Full calculated target
+   - ≤50%: 80% of target
+   - ≤70%: 50% of target (only if large deficit)
+6. **Smart Winter Mode**: When solar forecast < `low_solar_threshold_wh`, ignore solar predictions
+7. **Energy Deficit**: Calculated from consumption forecast minus usable solar
 
 ## Last Updated
-2024-12-21
+2026-02-03
+
