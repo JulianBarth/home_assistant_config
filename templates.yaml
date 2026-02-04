@@ -87,22 +87,21 @@
       icon: mdi:battery-lock
       state: >
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
-        {# Default 100 represents maximum target (100% SOC) as fallback #}
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
         {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+        {% set discharge_locked = is_state('input_boolean.battery_no_discharging_active', 'on') %}
         
         {# Hold threshold: configurable range around target (default ±3%) #}
         {% set hold_threshold = states('input_number.battery_hold_threshold') | float(default=3) * 100 %}
         
-        {# Hysteresis for stop charging #}
-        {% set stop_hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
+        {# Hold SOC when: #}
+        {# 1. Currently charging AND approaching target (within hold_threshold) #}
+        {# 2. OR already in discharge-locked mode AND still near target #}
+        {% set approaching_target = charging_active and (current_soc >= (target_soc - hold_threshold)) %}
+        {% set maintaining_hold = discharge_locked and (current_soc >= (computed_target - hold_threshold)) %}
         
-        {# Hold SOC when: Battery is within ±3% of target AND charging was active #}
-        {% set at_target = (current_soc >= (target_soc - hold_threshold)) and (current_soc <= (target_soc + hold_threshold)) %}
-        {% set below_stop_threshold = current_soc < (target_soc + stop_hysteresis) %}
-        
-        {{ at_target and below_stop_threshold and charging_active }}
+        {{ approaching_target or maintaining_hold }}
 
     - name: "Should Prevent Discharge"
       unique_id: should_prevent_discharge
@@ -112,14 +111,22 @@
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
-        {% set hold_active = is_state('binary_sensor.should_hold_battery_soc', 'on') %}
+        {% set discharge_locked = is_state('input_boolean.battery_no_discharging_active', 'on') %}
         
-        {# Buffer zone: prevent discharge if within configurable buffer above target #}
+        {# Buffer zone below target where we should prevent discharge #}
         {% set buffer = states('input_number.battery_discharge_buffer') | float(default=5) * 100 %}
-        {% set at_or_near_target = (current_soc >= computed_target) and (current_soc <= (computed_target + buffer)) %}
         
-        {# Prevent discharge when: at target and (charging was active OR hold mode active) #}
-        {{ at_or_near_target and (charging_active or hold_active) }}
+        {# Prevent discharge when: #}
+        {# 1. Currently at or above computed target AND (charging is active OR already locked) #}
+        {# 2. This keeps the lock active even after charging stops #}
+        {% set at_or_above_target = current_soc >= (computed_target - buffer) %}
+        {% set should_maintain_lock = charging_active or discharge_locked %}
+        
+        {# Release lock only when SoC drops significantly below target (2x buffer) #}
+        {% set release_threshold = computed_target - (buffer * 2) %}
+        {% set should_release = current_soc < release_threshold %}
+        
+        {{ at_or_above_target and should_maintain_lock and not should_release }}
 
 # Stable car charging detection with hysteresis
 - binary_sensor:
