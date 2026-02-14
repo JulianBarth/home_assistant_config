@@ -312,7 +312,7 @@ sensor:
 command_line:
   - notify:
       name: battery_log
-      command: "printf '%s\n' >> /config/battery_algorithm.log"
+      command: "sh -c 'cat >> /config/battery_algorithm.log; echo >> /config/battery_algorithm.log'"
 
 automation: !include automations.yaml
 script: !include scripts.yaml
