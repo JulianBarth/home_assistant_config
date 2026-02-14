@@ -942,7 +942,7 @@ views:
           - type: divider
           - type: section
             label: "Control Registers"
-          - entity: switch.StorCtl_Mod
+          - entity: switch.storctl_mod
             name: "StorCtl_Mod (storage control)"
             secondary_info: last-changed
           - type: divider
