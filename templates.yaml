@@ -88,37 +88,23 @@
       state: >
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
-        {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
-        {% set discharge_locked = is_state('input_boolean.battery_no_discharging_active', 'on') %}
         
         {# Hold threshold: configurable range around target (default ±3%) #}
         {% set hold_threshold = states('input_number.battery_hold_threshold') | float(default=3) * 100 %}
         
-        {# Hold SOC when: #}
-        {# 1. Currently charging AND approaching target (within hold_threshold) #}
-        {# 2. OR already in discharge-locked mode AND still near target #}
+        {# Hold SOC when actively charging AND approaching target (within hold_threshold) #}
         {% set approaching_target = charging_active and (current_soc >= (target_soc - hold_threshold)) %}
-        {% set maintaining_hold = discharge_locked and (current_soc >= (computed_target - hold_threshold)) %}
         
-        {{ approaching_target or maintaining_hold }}
+        {{ approaching_target }}
 
     - name: "Should Prevent Discharge"
       unique_id: should_prevent_discharge
       icon: mdi:battery-lock-open
       state: >
-        {# Prevent discharging when battery SoC is at or below the minimum target #}
-        {# This protects against draining below the desired minimum level #}
-        {# IMPORTANT: Does NOT depend on charging_active to avoid circular dependency #}
-        {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
-        {% set default_target = states('input_number.soc_target_default') | float(default=15) * 100 %}
-        {% set buffer = states('input_number.battery_discharge_buffer') | float(default=5) * 100 %}
-        
-        {# Prevent discharge when SoC is within buffer of the default minimum target #}
-        {# This ensures the battery doesn't drain below our minimum even after charging stops #}
-        {% set near_minimum = current_soc <= (default_target + buffer) %}
-        
-        {{ near_minimum }}
+        {# DISABLED: Fronius handles minimum reserve SoC natively #}
+        {# HA algorithm only manages cost-optimized charging #}
+        {{ false }}
 
 # Stable car charging detection with hysteresis
 - binary_sensor:

@@ -109,10 +109,11 @@
               target:
                 entity_id: input_boolean.battery_charging_active
 
-      # Default: Normal Operation or Stop Charging or Hold SOC or Prevent Discharge
+      # Default: Stop Charging, Hold SOC, or Normal Operation
+      # NOTE: Fronius handles minimum reserve SoC — HA only manages cost optimization
       default:
         - choose:
-            # FIRST: Check if we should stop charging (highest priority in default)
+            # FIRST: Stop charging when target reached
             - conditions:
                 - condition: state
                   entity_id: binary_sensor.should_stop_charging
@@ -124,7 +125,7 @@
                 - service: input_boolean.turn_off
                   target:
                     entity_id: input_boolean.manual_battery_charge
-                # Clear ALL flags — we are DONE charging
+                # Clear ALL flags — charging cycle complete
                 - service: input_boolean.turn_off
                   target:
                     entity_id:
@@ -136,72 +137,48 @@
                     entity_id: input_number.battery_target_soc
                   data:
                     value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
-                # After clearing flags, disable external control
+                # Disable external inverter control
                 - service: switch.turn_off
                   target:
                     entity_id: switch.storctl_mod
 
-            # SECOND: Hold SOC at target (gradual slowdown while approaching)
+            # SECOND: Gradual slowdown when approaching target
             - conditions:
                 - condition: state
                   entity_id: binary_sensor.should_hold_battery_soc
                   state: "on"
-                # Only when actively charging
                 - condition: state
                   entity_id: input_boolean.battery_charging_active
                   state: "on"
-                # Prevent re-executing if already in hold mode
                 - condition: state
                   entity_id: input_boolean.battery_no_discharging_active
                   state: "off"
               sequence:
-                # Use reduced charge rate (50%) to approach target gradually
                 - service: script.turn_on
                   target:
                     entity_id: script.charge_battery_reduced_rate
-                # Set flag to indicate we're in hold/limited discharge mode
                 - service: input_boolean.turn_on
                   target:
                     entity_id: input_boolean.battery_no_discharging_active
 
-          # Normal operation - release controls
+          # Normal operation — fully release inverter controls
           default:
-            - choose:
-                # If we should still prevent discharge, maintain the lock
-                - conditions:
-                    - condition: state
-                      entity_id: binary_sensor.should_prevent_discharge
-                      state: "on"
-                  sequence:
-                    # Keep discharge limited but turn off charging
-                    - service: script.turn_on
-                      target:
-                        entity_id: script.set_limited_discharge
-                    - service: switch.turn_on
-                      target:
-                        entity_id: switch.storctl_mod
-                    - service: input_boolean.turn_off
-                      target:
-                        entity_id: input_boolean.battery_charging_active
-              # Fully release controls only when prevent_discharge is off
-              default:
-                - service: script.turn_on
-                  target:
-                    entity_id: script.set_regular_charge
-                - service: switch.turn_off
-                  target:
-                    entity_id: switch.storctl_mod
-                - service: input_boolean.turn_off
-                  target:
-                    entity_id:
-                      - input_boolean.battery_charging_active
-                      - input_boolean.battery_no_discharging_active
-                # Reset target to default
-                - service: input_number.set_value
-                  target:
-                    entity_id: input_number.battery_target_soc
-                  data:
-                    value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
+            - service: script.turn_on
+              target:
+                entity_id: script.set_regular_charge
+            - service: switch.turn_off
+              target:
+                entity_id: switch.storctl_mod
+            - service: input_boolean.turn_off
+              target:
+                entity_id:
+                  - input_boolean.battery_charging_active
+                  - input_boolean.battery_no_discharging_active
+            - service: input_number.set_value
+              target:
+                entity_id: input_number.battery_target_soc
+              data:
+                value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
 - alias: Solcast update
   description: ""
   trigger:
@@ -299,7 +276,11 @@
           {% set data = state_attr('sensor.battery_optimization_data', 'calculation_data') %}
           {% set today = state_attr('sensor.tibber_energy_prices', 'today') %}
           {% set tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
-          {"ts":"{{ now().isoformat() }}","trigger":"{{ trigger.id | default('unknown') }}","soc":{{ states('sensor.batterie_soc') | float(0) }},"soc_scaled":{{ states('sensor.reading_energy_battery_soc_scaled') | float(0) }},"target":{{ states('input_number.battery_target_soc') | float(15) }},"computed_target":{{ states('sensor.computed_target_soc') | float(15) }},"mode":"{{ states('sensor.battery_control_mode') }}","charging_state":"{{ states('sensor.charging_state') }}","bridge_type":"{{ data.bridge_type if data else 'N/A' }}","bridge_hours":{{ data.bridge_hours if data else 0 }},"bridge_consumption_wh":{{ data.bridge_consumption_wh if data else 0 }},"energy_deficit_wh":{{ data.energy_deficit_wh if data else 0 }},"solar_remaining_wh":{{ data.expected_solar_wh if data else 0 }},"usable_solar_wh":{{ data.usable_solar_wh if data else 0 }},"is_low_solar":{{ data.is_low_solar_day | lower if data else 'true' }},"price_ct":{{ (states('sensor.tibber_energy_prices') | float(0) * 100) | round(2) }},"next_price_ct":{{ data.next_price_cents if data else 0 }},"price_drop_ct":{{ data.price_drop_cents if data else 0 }},"percentile":{{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(100) }},"max_price_ct":{{ states('input_number.max_charge_price_cents') | float(25) }},"decision":"{{ data.decision_reason if data else 'N/A' }}","flags":{"charging":{{ is_state('input_boolean.battery_charging_active','on') | lower }},"no_discharge":{{ is_state('input_boolean.battery_no_discharging_active','on') | lower }},"automation":{{ is_state('input_boolean.battery_automation_on','on') | lower }},"manual":{{ is_state('input_boolean.manual_battery_charge','on') | lower }}},"sensors":{"start":{{ is_state('binary_sensor.should_start_charging','on') | lower }},"stop":{{ is_state('binary_sensor.should_stop_charging','on') | lower }},"hold":{{ is_state('binary_sensor.should_hold_battery_soc','on') | lower }},"prevent":{{ is_state('binary_sensor.should_prevent_discharge','on') | lower }},"profitable":{{ is_state('binary_sensor.battery_charging_is_profitable_enhanced','on') | lower }},"car":{{ is_state('binary_sensor.car_charging_stable','on') | lower }}},"inverter":{"battery_w":{{ states('sensor.battery_power') | float(0) | round(0) }},"ac_w":{{ states('sensor.reading_energy_inverter_ac_output') | float(0) | round(0) }},"grid_w":{{ states('sensor.reading_energy_main_meter') | float(0) | round(0) }},"storctl":"{{ states('switch.storctl_mod') }}"},"prices":{"today":{{ today | length if today else 0 }},"tomorrow":{{ tomorrow | length if tomorrow else 0 }}}}
+          {"ts":"{{ now().isoformat() }}","trigger":"{{ trigger.id | default('unknown') }}","soc":{{ states('sensor.batterie_soc') | float(0) }},"soc_scaled":{{ states('sensor.reading_energy_battery_soc_scaled') | float(0) }},"target":{{ states('input_number.battery_target_soc') | float(15) }},"computed_target":{{ states('sensor.computed_target_soc') | float(15) }},"mode":"{{ states('sensor.battery_control_mode') }}","charging_state":"{{ states('sensor.charging_state') }}","bridge_type":"{{ data.bridge_type if data else 'N/A' }}","bridge_hours":{{ data.bridge_hours if data else 0 }},"bridge_consumption_wh":{{ data.bridge_consumption_wh if data else 0 }},"energy_deficit_wh":{{ data.energy_deficit_wh if data else 0 }},"solar_remaining_wh":{{ data.expected_solar_wh if data else 0 }},"usable_solar_wh":{{ data.usable_solar_wh if data else 0 }},"is_low_solar":{{ data.is_low_solar_day | lower if data else 'true' }},"price_ct":{{ (states('sensor.tibber_energy_prices') | float(0) * 100) | round(2) }},"next_price_ct":{{ data.next_price_cents if data else 0 }},"price_drop_ct":{{ data.price_drop_cents if data else 0 }},"percentile":{{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(100) }},"max_price_ct":{{ states('input_number.max_charge_price_cents') | float(25) }},"decision":"{{ data.decision_reason if data else 'N/A' }}","flags":{"charging":{{ is_state('input_boolean.battery_charging_active','on') | lower }},"no_discharge":{{ is_state('input_boolean.battery_no_discharging_active','on') | lower }},"automation":{{ is_state('input_boolean.battery_automation_on','on') | lower }},"manual":{{ is_state('input_boolean.manual_battery_charge','on') | lower }}},"sensors":{"start":{{ is_state('binary_sensor.should_start_charging','on') | lower }},"stop":{{ is_state('binary_sensor.should_stop_charging','on') | lower }},"hold":{{ is_state('binary_sensor.should_hold_battery_soc','on') | lower }},"profitable":{{ is_state('binary_sensor.battery_charging_is_profitable_enhanced','on') | lower }},"car":{{ is_state('binary_sensor.car_charging_stable','on') | lower }}},"inverter":{"battery_w":{{ states('sensor.battery_power') | float(0) | round(0) }},"ac_w":{{ states('sensor.reading_energy_inverter_ac_output') | float(0) | round(0) }},"grid_w":{{ states('sensor.reading_energy_main_meter') | float(0) | round(0) }},"storctl":"{{ states('switch.storctl_mod') }}"},"prices":{"today":{{ today | length if today else 0 }},"tomorrow":{{ tomorrow | length if tomorrow else 0 }}}}
+    # Append newline for proper JSONL format
+    - service: notify.battery_log
+      data:
+        message: ""
   mode: queued
   max: 5
 
