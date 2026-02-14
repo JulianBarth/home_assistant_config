@@ -796,3 +796,255 @@ views:
           - **House**: General consumption (~14 kWh/day)
           - **Wallbox**: Wattpilot EV charging
           - **Grid**: Tibber variable pricing (15-min intervals)
+
+  # =========================================================================
+  # VIEW 8: ALGORITHM DEBUG — Deep diagnostic data for remote troubleshooting
+  # =========================================================================
+  - title: Algorithm Debug
+    path: algorithm_debug
+    icon: mdi:chart-timeline-variant-shimmer
+    cards:
+      # --- ALGORITHM INTERNALS (raw calculation_data) ---
+      - type: markdown
+        title: "🔬 Algorithm Internals"
+        content: |
+          {% set data = state_attr('sensor.battery_optimization_data', 'calculation_data') %}
+          {% if data %}
+          **Raw State:** `{{ states('sensor.battery_optimization_data') }}`
+          **Decision:** {{ data.decision_reason }}
+
+          | Field | Value | Field | Value |
+          |-------|-------|-------|-------|
+          | bridge_type | {{ data.bridge_type }} | bridge_hours | {{ data.bridge_hours }}h |
+          | bridge_consumption | {{ data.bridge_consumption_wh }} Wh | energy_deficit | {{ data.energy_deficit_wh }} Wh |
+          | expected_solar | {{ data.expected_solar_wh }} Wh | effective_solar | {{ data.effective_solar_wh }} Wh |
+          | usable_solar | {{ data.usable_solar_wh }} Wh | is_low_solar | {{ data.is_low_solar_day }} |
+          | current_price | {{ data.current_price_cents }} ct | next_price | {{ data.next_price_cents }} ct |
+          | price_drop | {{ data.price_drop_cents }} ct | percentile | {{ data.price_percentile }}% |
+          | max_price | {{ data.max_price_cents }} ct | current_hour | {{ data.current_hour }} |
+          | is_weekend | {{ data.is_weekend }} | wake_hour | {{ data.wake_hour }} |
+
+          **computed_target_soc:** {{ states('sensor.computed_target_soc') }}%
+          **battery_target_soc (input):** {{ states('input_number.battery_target_soc') }}%
+          **batterie_soc:** {{ states('sensor.batterie_soc') }}%
+          **soc_scaled:** {{ states('sensor.reading_energy_battery_soc_scaled') }}
+          {% else %}
+          ⚠️ `calculation_data` attribute is empty or unavailable
+          {% endif %}
+
+      # --- ALL FLAGS AND SENSORS WITH TIMESTAMPS ---
+      - type: entities
+        title: "🚦 Control Flags (with last-changed)"
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - type: section
+            label: "Input Boolean Flags"
+          - entity: input_boolean.battery_charging_active
+            name: "battery_charging_active"
+            secondary_info: last-changed
+          - entity: input_boolean.battery_no_discharging_active
+            name: "battery_no_discharging_active"
+            secondary_info: last-changed
+          - entity: input_boolean.battery_automation_on
+            name: "battery_automation_on"
+            secondary_info: last-changed
+          - entity: input_boolean.manual_battery_charge
+            name: "manual_battery_charge"
+            secondary_info: last-changed
+          - entity: input_boolean.manual_charging_on
+            name: "manual_charging_on"
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: "Decision Binary Sensors"
+          - entity: binary_sensor.should_start_charging
+            name: "should_start_charging"
+            secondary_info: last-changed
+          - entity: binary_sensor.should_stop_charging
+            name: "should_stop_charging"
+            secondary_info: last-changed
+          - entity: binary_sensor.should_hold_battery_soc
+            name: "should_hold_battery_soc"
+            secondary_info: last-changed
+          - entity: binary_sensor.should_prevent_discharge
+            name: "should_prevent_discharge"
+            secondary_info: last-changed
+          - entity: binary_sensor.battery_charging_is_profitable_enhanced
+            name: "is_profitable_enhanced"
+            secondary_info: last-changed
+          - entity: binary_sensor.should_charge_battery_during_car_charging
+            name: "charge_during_car"
+            secondary_info: last-changed
+          - entity: binary_sensor.car_charging_stable
+            name: "car_charging_stable"
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: "Mode Sensors"
+          - entity: sensor.battery_control_mode
+            name: "battery_control_mode"
+            secondary_info: last-changed
+          - entity: sensor.battery_control_status
+            name: "battery_control_status"
+            secondary_info: last-changed
+          - entity: sensor.charging_state
+            name: "charging_state (Modbus)"
+            secondary_info: last-changed
+          - entity: sensor.discharge_limit_percentage
+            name: "discharge_limit_percentage"
+            secondary_info: last-changed
+
+      # --- PRICE DATA HEALTH ---
+      - type: markdown
+        title: "💰 Price Data Health"
+        content: |
+          {% set today = state_attr('sensor.tibber_energy_prices', 'today') %}
+          {% set tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+          **Current Price:** {{ states('sensor.tibber_energy_prices') }} EUR/kWh ({{ (states('sensor.tibber_energy_prices') | float(0) * 100) | round(2) }} ct)
+          **Sensor State:** {{ states('sensor.tibber_energy_prices') }}
+          **Last Updated:** {{ states.sensor.tibber_energy_prices.last_changed if states.sensor.tibber_energy_prices else 'N/A' }}
+
+          | Data Set | Count | Available |
+          |----------|-------|-----------|
+          | Today | {{ today | length if today else 'N/A' }} | {{ '✅' if today else '❌' }} |
+          | Tomorrow | {{ tomorrow | length if tomorrow else 'N/A' }} | {{ '✅' if tomorrow else '❌' }} |
+
+          **Derived Price Sensors:**
+          | Sensor | Value | Last Changed |
+          |--------|-------|-------------|
+          | Lowest (24h) | {{ states('sensor.tibber_energy_lowest_price_next_24_hours') }} ct | {{ states.sensor.tibber_energy_lowest_price_next_24_hours.last_changed | default('N/A') }} |
+          | Highest (24h) | {{ states('sensor.tibber_energy_highest_price_next_24_hours') }} ct | {{ states.sensor.tibber_energy_highest_price_next_24_hours.last_changed | default('N/A') }} |
+          | Average (12h) | {{ states('sensor.tibber_energy_average_price_next_12_hours') }} ct | {{ states.sensor.tibber_energy_average_price_next_12_hours.last_changed | default('N/A') }} |
+          | Percentile (12h) | {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}% | {{ states.sensor.tibber_energy_price_percentile_next_12_hours.last_changed | default('N/A') }} |
+          | Next Hour | {{ states('sensor.tibber_energy_price_next_hour') }} ct | {{ states.sensor.tibber_energy_price_next_hour.last_changed | default('N/A') }} |
+
+      # --- INVERTER / MODBUS STATE ---
+      - type: entities
+        title: "🔌 Inverter & Modbus State"
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - type: section
+            label: "Battery"
+          - entity: sensor.batterie_soc
+            name: "SoC (display %)"
+            secondary_info: last-changed
+          - entity: sensor.reading_energy_battery_soc_scaled
+            name: "SoC (raw scaled)"
+            secondary_info: last-changed
+          - entity: sensor.battery_power
+            name: "Battery Power (W)"
+            secondary_info: last-changed
+          - entity: sensor.charging_state
+            name: "ChaSt Register"
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: "Control Registers"
+          - entity: switch.StorCtl_Mod
+            name: "StorCtl_Mod (storage control)"
+            secondary_info: last-changed
+          - type: divider
+          - type: section
+            label: "Inverter"
+          - entity: sensor.reading_energy_inverter_ac_output
+            name: "AC Output"
+            secondary_info: last-changed
+          - entity: sensor.reading_energy_main_meter
+            name: "Main Meter"
+            secondary_info: last-changed
+
+      # --- SOLAR FORECAST DETAIL ---
+      - type: markdown
+        title: "☀️ Solar Forecast Debug"
+        content: |
+          **Remaining Today:** {{ states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') }} Wh
+          **Forecast Next Hours:** {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') }} Wh
+          **Low Solar Threshold:** {{ states('input_number.low_solar_threshold_wh') }} Wh
+
+          **Flags:**
+          | Flag | State |
+          |------|-------|
+          | expected_sun_low | {{ states('binary_sensor.expected_sun_low') }} |
+          | expected_sun_very_low | {{ states('binary_sensor.expected_sun_very_low') }} |
+
+          **Fronius DC Power:**
+          | Source | Power |
+          |--------|-------|
+          | Fronius Solar | {{ states('sensor.fronius_solar_power') }} W |
+          | Balkonkraftwerk | {{ states('sensor.balkonkraftwerk_power') }} W |
+          | Total Solar | {{ states('sensor.total_solar_power') }} W |
+
+      # --- FLAG TRANSITION HISTORY ---
+      - type: history-graph
+        title: "🔄 Flag Transitions (24h)"
+        hours_to_show: 24
+        entities:
+          - entity: input_boolean.battery_charging_active
+            name: Charging Active
+          - entity: input_boolean.battery_no_discharging_active
+            name: Discharge Limited
+          - entity: binary_sensor.should_start_charging
+            name: Should Start
+          - entity: binary_sensor.should_stop_charging
+            name: Should Stop
+          - entity: binary_sensor.should_hold_battery_soc
+            name: Should Hold
+          - entity: binary_sensor.should_prevent_discharge
+            name: Should Prevent Discharge
+          - entity: binary_sensor.battery_charging_is_profitable_enhanced
+            name: Is Profitable
+
+      # --- SOC vs TARGET (detailed) ---
+      - type: history-graph
+        title: "📈 SoC vs Targets (48h)"
+        hours_to_show: 48
+        entities:
+          - entity: sensor.batterie_soc
+            name: SoC (%)
+          - entity: sensor.computed_target_soc
+            name: Smart Target (%)
+          - entity: input_number.battery_target_soc
+            name: Active Target (%)
+          - entity: input_number.soc_target_default
+            name: Default Minimum (%)
+
+      # --- CAR CHARGING ---
+      - type: entities
+        title: "🚗 Car / Wallbox Debug"
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - entity: sensor.wattpilot_carconnected
+            name: "wattpilot_carconnected"
+            secondary_info: last-changed
+          - entity: select.wattpilot_charging_mode
+            name: "wattpilot_charging_mode"
+            secondary_info: last-changed
+          - entity: sensor.wallbox_power
+            name: "wallbox_power"
+            secondary_info: last-changed
+          - entity: binary_sensor.car_charging_stable
+            name: "car_charging_stable"
+            secondary_info: last-changed
+          - entity: binary_sensor.should_charge_battery_during_car_charging
+            name: "charge_during_car"
+            secondary_info: last-changed
+
+      # --- CONFIGURATION SNAPSHOT ---
+      - type: markdown
+        title: "⚙️ Config Snapshot"
+        content: |
+          | Parameter | Value | Parameter | Value |
+          |-----------|-------|-----------|-------|
+          | battery_capacity | {{ states('input_number.battery_capacity_wh') }} Wh | soc_target_default | {{ states('input_number.soc_target_default') }}% |
+          | soc_hist | {{ states('input_number.soc_hist') }}% | hold_threshold | {{ states('input_number.battery_hold_threshold') }}% |
+          | discharge_buffer | {{ states('input_number.battery_discharge_buffer') }}% | max_charge_price | {{ states('input_number.max_charge_price_cents') }} ct |
+          | wear_cost | {{ states('input_number.battery_wear_cost_per_kwh') }} ct | low_solar_thresh | {{ states('input_number.low_solar_threshold_wh') }} Wh |
+          | night_rate | {{ states('input_number.night_consumption_rate_wh') }} Wh/h | day_rate | {{ states('input_number.day_consumption_rate_wh') }} Wh/h |
+          | weekday_wake | {{ states('input_number.weekday_wake_hour') }} | weekend_wake | {{ states('input_number.weekend_wake_hour') }} |
+          | sleep_hour | {{ states('input_number.sleep_hour') }} | daily_consumption | {{ states('input_number.daily_consumption_wh') }} Wh |
+          | charge_rate_max | {{ states('input_number.battery_charge_rate_max') }} | grid_capacity | {{ states('input_number.grid_connection_capacity') }} |
+          | car_hysteresis | {{ states('input_number.car_charging_hysteresis_minutes') }} min | | |
+
