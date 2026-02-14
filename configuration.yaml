@@ -308,12 +308,11 @@ sensor:
     round: 2
     method: left
 
-# Structured algorithm logging
+# Structured algorithm logging (command_line because file platform requires UI setup)
 notify:
   - name: battery_log
-    platform: file
-    filename: /config/battery_algorithm.log
-    timestamp: false
+    platform: command_line
+    command: "tee -a /config/battery_algorithm.log"
 
 automation: !include automations.yaml
 script: !include scripts.yaml
