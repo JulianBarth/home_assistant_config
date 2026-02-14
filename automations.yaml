@@ -49,7 +49,7 @@
                 entity_id: script.forced_full_recharge
             - service: switch.turn_on
               target:
-                entity_id: switch.StorCtl_Mod
+                entity_id: switch.storctl_mod
             - service: input_boolean.turn_on
               target:
                 entity_id: input_boolean.battery_charging_active
@@ -104,7 +104,7 @@
                 entity_id: script.forced_full_recharge
             - service: switch.turn_on
               target:
-                entity_id: switch.StorCtl_Mod
+                entity_id: switch.storctl_mod
             - service: input_boolean.turn_on
               target:
                 entity_id: input_boolean.battery_charging_active
@@ -112,12 +112,41 @@
       # Default: Normal Operation or Stop Charging or Hold SOC or Prevent Discharge
       default:
         - choose:
-            # Check if we should hold battery SOC at target (gradual slowdown)
+            # FIRST: Check if we should stop charging (highest priority in default)
+            - conditions:
+                - condition: state
+                  entity_id: binary_sensor.should_stop_charging
+                  state: "on"
+              sequence:
+                - service: script.turn_on
+                  target:
+                    entity_id: script.stop_battery_charging
+                - service: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.manual_battery_charge
+                # Clear ALL flags — we are DONE charging
+                - service: input_boolean.turn_off
+                  target:
+                    entity_id:
+                      - input_boolean.battery_charging_active
+                      - input_boolean.battery_no_discharging_active
+                # Reset target to default
+                - service: input_number.set_value
+                  target:
+                    entity_id: input_number.battery_target_soc
+                  data:
+                    value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
+                # After clearing flags, disable external control
+                - service: switch.turn_off
+                  target:
+                    entity_id: switch.storctl_mod
+
+            # SECOND: Hold SOC at target (gradual slowdown while approaching)
             - conditions:
                 - condition: state
                   entity_id: binary_sensor.should_hold_battery_soc
                   state: "on"
-                # Double-check charging is still active
+                # Only when actively charging
                 - condition: state
                   entity_id: input_boolean.battery_charging_active
                   state: "on"
@@ -134,48 +163,8 @@
                 - service: input_boolean.turn_on
                   target:
                     entity_id: input_boolean.battery_no_discharging_active
-            # NEW: Prevent discharge when at target SoC (keep battery at desired level)
-            - conditions:
-                - condition: state
-                  entity_id: binary_sensor.should_prevent_discharge
-                  state: "on"
-              sequence:
-                # Use limited discharge script to prevent draining
-                - service: script.turn_on
-                  target:
-                    entity_id: script.set_limited_discharge
-                - service: switch.turn_on
-                  target:
-                    entity_id: switch.StorCtl_Mod
-                # Set flag for state consistency (Bug 2 fix)
-                - service: input_boolean.turn_on
-                  target:
-                    entity_id: input_boolean.battery_no_discharging_active
-            # Check if we should stop charging
-            - conditions:
-                - condition: state
-                  entity_id: binary_sensor.should_stop_charging
-                  state: "on"
-              sequence:
-                - service: script.turn_on
-                  target:
-                    entity_id: script.stop_battery_charging
-                - service: input_boolean.turn_off
-                  target:
-                    entity_id: input_boolean.manual_battery_charge
-                # Clear both flags — prevent_discharge sensor handles ongoing protection
-                - service: input_boolean.turn_off
-                  target:
-                    entity_id:
-                      - input_boolean.battery_charging_active
-                      - input_boolean.battery_no_discharging_active
-                # Reset target to default (prevents stale 100% target from previous cycle)
-                - service: input_number.set_value
-                  target:
-                    entity_id: input_number.battery_target_soc
-                  data:
-                    value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
-          # Normal operation - release controls only when appropriate
+
+          # Normal operation - release controls
           default:
             - choose:
                 # If we should still prevent discharge, maintain the lock
@@ -190,7 +179,7 @@
                         entity_id: script.set_limited_discharge
                     - service: switch.turn_on
                       target:
-                        entity_id: switch.StorCtl_Mod
+                        entity_id: switch.storctl_mod
                     - service: input_boolean.turn_off
                       target:
                         entity_id: input_boolean.battery_charging_active
@@ -201,7 +190,7 @@
                     entity_id: script.set_regular_charge
                 - service: switch.turn_off
                   target:
-                    entity_id: switch.StorCtl_Mod
+                    entity_id: switch.storctl_mod
                 - service: input_boolean.turn_off
                   target:
                     entity_id:

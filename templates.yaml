@@ -107,21 +107,18 @@
       unique_id: should_prevent_discharge
       icon: mdi:battery-lock-open
       state: >
-        {# Prevent discharging when battery is near computed target SoC #}
-        {# IMPORTANT: This must NOT depend on battery_no_discharging_active #}
-        {# to avoid circular dependency (this sensor controls that flag) #}
+        {# Prevent discharging when battery SoC is at or below the minimum target #}
+        {# This protects against draining below the desired minimum level #}
+        {# IMPORTANT: Does NOT depend on charging_active to avoid circular dependency #}
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
-        {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
-        {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
-        
-        {# Buffer zone below target where we should prevent discharge #}
+        {% set default_target = states('input_number.soc_target_default') | float(default=15) * 100 %}
         {% set buffer = states('input_number.battery_discharge_buffer') | float(default=5) * 100 %}
         
-        {# Prevent discharge when: SoC is within buffer of target AND charging was/is active #}
-        {# Release when: SoC drops below (target - buffer) OR charging was never started #}
-        {% set near_target = current_soc >= (computed_target - buffer) %}
+        {# Prevent discharge when SoC is within buffer of the default minimum target #}
+        {# This ensures the battery doesn't drain below our minimum even after charging stops #}
+        {% set near_minimum = current_soc <= (default_target + buffer) %}
         
-        {{ near_target and charging_active }}
+        {{ near_minimum }}
 
 # Stable car charging detection with hysteresis
 - binary_sensor:
