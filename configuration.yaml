@@ -308,6 +308,13 @@ sensor:
     round: 2
     method: left
 
+# Structured algorithm logging
+notify:
+  - name: battery_log
+    platform: file
+    filename: /config/battery_algorithm.log
+    timestamp: false
+
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
