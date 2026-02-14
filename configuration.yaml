@@ -16,6 +16,8 @@ lovelace:
   resources:
     - url: /hacsfiles/ha-sankey-chart/ha-sankey-chart.js
       type: module
+    - url: /hacsfiles/power-flow-card-plus/power-flow-card-plus.js
+      type: module
   dashboards:
     lovelace:
       mode: yaml
