@@ -6,7 +6,9 @@
 # Fronius Symo Gen24 Plus 6.0
 # offset 40131 
 - type: tcp
-  host: 192.168.178.92  # local via modbus proxy 192.168.178.197
+  host: 192.168.178.92  # proxy at .92 forwards to inverter WiFi at .197
+  timeout: 10  # increased timeout for WiFi stability
+  retries: 3
   port: 502
   name: fronius1
   sensors:
@@ -40,7 +42,7 @@
       slave: 1
       data_type: uint16
       address: 40361
-      scan_interval: 5
+      scan_interval: 15  # SoC changes slowly, 15s is sufficient
 
 
     - name: fronius_dc_sf
@@ -100,7 +102,7 @@
       slave: 1
       data_type: uint16
       address: 40355
-      scan_interval: 5
+      scan_interval: 30  # status register, doesn't change rapidly
       unit_of_measurement: W
       unique_id: 0986479e-d88d-4722-b70c-8f0f8b84bfd2
     # OutWRte - Register 40365 (discharge rate, 0.01% increments)
@@ -108,7 +110,7 @@
       slave: 1
       data_type: int16
       address: 40365
-      scan_interval: 5
+      scan_interval: 30  # control register, only changes when we write to it
       unit_of_measurement: "%"
       unique_id: 9af951af-ad20-410b-8e3f-29c9e21702c3
     # InWRte - Register 40366 (charge rate, 0.01% increments)
@@ -116,21 +118,21 @@
       slave: 1
       data_type: int16
       address: 40366
-      scan_interval: 5
+      scan_interval: 30  # control register, only changes when we write to it
       unit_of_measurement: "%"
       unique_id: 8c5c170b-d0a5-442a-a217-67e8eb5727ea
     - name: nameplate_id
       slave: 1
       data_type: uint16
       address: 40131
-      scan_interval: 5
+      scan_interval: 300  # static identifier, rarely changes
       unique_id: bb1d60ed-cabd-434b-9289-ef58c2f374c4
     # MinRsvPct
     - name: min_soc
       slave: 1
       data_type: uint16
       address: 40360
-      scan_interval: 5
+      scan_interval: 60  # reserve setting, only changes when we write to it
       # unit_of_measurement: "%"
       unique_id: 0d66a60e-22ba-4ca1-b492-780602b914d0
     - name: "Battery Control Mode (read/write)"
@@ -138,12 +140,12 @@
       address: 40358
       data_type: uint16
       unique_id: 18163163-6826-4f9f-bf54-ec97d9b4548d
-      scan_interval: 5
+      scan_interval: 30  # control register, only changes when we write to it
       input_type: holding
     - name: ChaSt
       slave: 1
       address: 40364
-      scan_interval: 5
+      scan_interval: 15  # charging state changes during transitions
       data_type: uint16
       unique_id: 0fb59ea6-cfdc-4126-82d3-468fecb73dbd
   switches:
