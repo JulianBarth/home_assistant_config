@@ -12,11 +12,17 @@ frontend:
 
 # Lovelace UI configuration
 lovelace:
-  mode: yaml
+  resource_mode: yaml
   resources:
     - url: /hacsfiles/ha-sankey-chart/ha-sankey-chart.js
       type: module
   dashboards:
+    lovelace:
+      mode: yaml
+      filename: ui-lovelace.yaml
+      title: Overview
+      icon: mdi:view-dashboard
+      show_in_sidebar: true
     lovelace-battery:
       mode: yaml
       title: Battery Management
