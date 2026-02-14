@@ -257,22 +257,6 @@ input_number:
     icon: mdi:weather-sunny-off
 
 sensor:
-  - platform: rest
-    name: Tibber Prices
-    resource: https://api.tibber.com/v1-beta/gql
-    method: POST
-    payload: '{ "query": "{ viewer { homes { currentSubscription { status priceInfo(resolution: QUARTER_HOURLY) { current { total } today { total } tomorrow { total } } } } } }" }'
-    json_attributes_path: "$.data.viewer.homes[0].currentSubscription.priceInfo"
-    json_attributes:
-      - today
-      - tomorrow
-    value_template: "{{ value_json.data.viewer.homes[0].currentSubscription.priceInfo.current.total | float }}"
-    scan_interval: 30
-    headers:
-      Authorization: !secret tibber_api_key
-      Content-Type: application/json
-      User-Agent: REST
-    unit_of_measurement: EUR/kWh
 
   - platform: rest
     name: "Tibber Energy Prices"

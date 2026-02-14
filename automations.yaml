@@ -112,24 +112,24 @@
       # Default: Normal Operation or Stop Charging or Hold SOC or Prevent Discharge
       default:
         - choose:
-            # Check if we should hold battery SOC at target
+            # Check if we should hold battery SOC at target (gradual slowdown)
             - conditions:
                 - condition: state
                   entity_id: binary_sensor.should_hold_battery_soc
                   state: "on"
-                # Double-check charging is still active to prevent race conditions
-                # between sensor evaluation and script execution
+                # Double-check charging is still active
                 - condition: state
                   entity_id: input_boolean.battery_charging_active
                   state: "on"
-                # Prevent re-executing hold script every 5 minutes if already in hold mode
+                # Prevent re-executing if already in hold mode
                 - condition: state
                   entity_id: input_boolean.battery_no_discharging_active
                   state: "off"
               sequence:
+                # Use reduced charge rate (50%) to approach target gradually
                 - service: script.turn_on
                   target:
-                    entity_id: script.hold_battery_soc
+                    entity_id: script.charge_battery_reduced_rate
                 # Set flag to indicate we're in hold/limited discharge mode
                 - service: input_boolean.turn_on
                   target:

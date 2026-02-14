@@ -124,6 +124,25 @@ forced_full_recharge:
         address: 40366
         value: 10000
 
+charge_battery_reduced_rate:
+  alias: "Charge Battery at Reduced Rate"
+  description: "Charge at 50% power while blocking discharge - used near target SoC to prevent overshoot"
+  sequence:
+    # OutWRte - Prevent discharge (negative value: 65536 - 5000 = 60536)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 60536
+    # InWRte - Charge at 50% power
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 5000
+
 # =============================================================================
 # HOLD SOC BATTERY CONTROL SCRIPTS
 # These scripts implement efficient battery SOC holding by setting minimal charge/discharge rates

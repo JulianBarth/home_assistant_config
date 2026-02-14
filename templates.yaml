@@ -218,7 +218,8 @@
         {% set current_price_eur = states('sensor.tibber_energy_prices') | float(default=0) %}
         {% set current_price_cents = current_price_eur * 100 %}
         {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
-        {% set is_falling = next_price_cents < current_price_cents %}
+        {% set price_drop_cents = next_price_cents - current_price_cents %}
+        {% set is_falling_significantly = price_drop_cents < -1.5 %}
         {% set is_negative_price = current_price_eur < 0 %}
         {% set price_below_ceiling = current_price_cents < max_price_cents %}
         
@@ -231,35 +232,39 @@
         {% set is_low_solar_day = expected_solar_wh < low_solar_threshold %}
         {% set effective_solar = 0 if is_low_solar_day else expected_solar_wh %}
         
-        {# === CALCULATE HOURS UNTIL END OF DAY CYCLES === #}
-        {# Night period: current → wake_hour (if before wake) OR sleep_hour → midnight → wake_hour #}
-        {# Day period: wake_hour → sleep_hour #}
+        {# === BRIDGE PERIOD CALCULATION === #}
+        {# Only forecast hours the battery must cover until next energy source #}
+        {# At night: bridge until wake (proxy for sunrise/solar start) #}
+        {# During day: bridge until sleep, offset by remaining solar #}
         
         {% if current_hour < wake_hour %}
-          {# Currently in night period (early morning before wake) #}
-          {% set night_hours_remaining = wake_hour - current_hour %}
-          {% set day_hours_remaining = sleep_hour - wake_hour %}
+          {# Night (early morning): bridge until wake #}
+          {% set bridge_hours = wake_hour - current_hour %}
+          {% set bridge_consumption_wh = bridge_hours * night_rate %}
         {% elif current_hour < sleep_hour %}
-          {# Currently in day period #}
-          {% set night_hours_remaining = 0 %}
-          {% set day_hours_remaining = sleep_hour - current_hour %}
+          {# Day period: bridge until sleep #}
+          {% set bridge_hours = sleep_hour - current_hour %}
+          {% set bridge_consumption_wh = bridge_hours * day_rate %}
         {% else %}
-          {# Currently in night period (after sleep_hour) → calculate until tomorrow wake #}
-          {% set night_hours_remaining = (24 - current_hour) + wake_hour %}
-          {% set day_hours_remaining = sleep_hour - wake_hour %}
+          {# Night (after sleep): bridge until tomorrow wake #}
+          {% set bridge_hours = (24 - current_hour) + wake_hour %}
+          {% set bridge_consumption_wh = bridge_hours * night_rate %}
         {% endif %}
         
-        {# === CONSUMPTION CALCULATION === #}
-        {% set expected_consumption_wh = (night_hours_remaining * night_rate) + (day_hours_remaining * day_rate) %}
-        
         {# === ENERGY DEFICIT === #}
-        {# Energy needed = consumption - solar, accounting for battery efficiency #}
-        {% set usable_solar = effective_solar * round_trip_efficiency %}
-        {% set energy_deficit_wh = expected_consumption_wh - usable_solar %}
+        {# Subtract solar only during daytime (at night solar = 0) #}
+        {% if current_hour >= wake_hour and current_hour < sleep_hour %}
+          {% set usable_solar = effective_solar * round_trip_efficiency %}
+        {% else %}
+          {% set usable_solar = 0 %}
+        {% endif %}
+        {% set energy_deficit_wh = [bridge_consumption_wh - usable_solar, 0] | max %}
+        {# Cap deficit at battery capacity — can't charge more than 100% #}
+        {% set energy_deficit_wh = [energy_deficit_wh, battery_capacity] | min %}
         
         {# Convert deficit to SoC percentage #}
         {% set deficit_soc = (energy_deficit_wh / battery_capacity * 100) | round(0) %}
-        {% set calculated_target = default_target + deficit_soc %}
+        {% set calculated_target = [default_target + deficit_soc, 100] | min %}
         
         {# === FINAL TARGET CALCULATION === #}
         {# Priority 1: Negative prices - always charge to 100% #}
@@ -271,8 +276,8 @@
         {# Priority 3: Not profitable to charge - maintain minimum #}
         {% elif not is_profitable %}
           {{ default_target }}
-        {# Priority 4: Price is falling - wait for cheaper prices #}
-        {% elif is_falling and percentile > 10 %}
+        {# Priority 4: Price falling significantly (>1.5ct) - wait unless already very cheap #}
+        {% elif is_falling_significantly and percentile > 25 %}
           {{ default_target }}
         {# Priority 5: Very cheap prices (bottom 10%) - charge aggressively #}
         {% elif percentile <= 10 %}
@@ -294,7 +299,7 @@
         {% endif %}
       attributes:
         calculation_data: >
-          {# Re-calculating essential vars for debug view #}
+          {# Debug view: recalculates bridge period + includes decision reason #}
           {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
           {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
           {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
@@ -308,37 +313,77 @@
           {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
           {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) %}
           {% set current_price_cents = states('sensor.tibber_energy_prices') | float(default=0) * 100 %}
+          {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
           {% set is_low_solar_day = expected_solar_wh < low_solar_threshold %}
           {% set effective_solar = 0 if is_low_solar_day else expected_solar_wh %}
+          {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
           
           {% if current_hour < wake_hour %}
-            {% set night_hours = wake_hour - current_hour %}
-            {% set day_hours = sleep_hour - wake_hour %}
+            {% set bridge_hours = wake_hour - current_hour %}
+            {% set bridge_consumption = bridge_hours * night_rate %}
+            {% set bridge_type = "night_to_wake" %}
           {% elif current_hour < sleep_hour %}
-            {% set night_hours = 0 %}
-            {% set day_hours = sleep_hour - current_hour %}
+            {% set bridge_hours = sleep_hour - current_hour %}
+            {% set bridge_consumption = bridge_hours * day_rate %}
+            {% set bridge_type = "day_to_sleep" %}
           {% else %}
-            {% set night_hours = (24 - current_hour) + wake_hour %}
-            {% set day_hours = sleep_hour - wake_hour %}
+            {% set bridge_hours = (24 - current_hour) + wake_hour %}
+            {% set bridge_consumption = bridge_hours * night_rate %}
+            {% set bridge_type = "night_to_wake" %}
           {% endif %}
           
-          {% set consumption = (night_hours * night_rate) + (day_hours * day_rate) %}
-          {% set deficit = consumption - (effective_solar * 0.9) %}
+          {% if current_hour >= wake_hour and current_hour < sleep_hour %}
+            {% set usable_solar = effective_solar * 0.9 %}
+          {% else %}
+            {% set usable_solar = 0 %}
+          {% endif %}
+          {% set deficit = [bridge_consumption - usable_solar, 0] | max %}
+          {% set deficit = [deficit, battery_capacity] | min %}
+          
+          {% set price_drop = next_price_cents - current_price_cents %}
+          {% set is_negative = current_price_cents < 0 %}
+          {% set price_ok = current_price_cents < max_price_cents %}
+          {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
+          {% set falling = price_drop < -1.5 %}
+          
+          {% if is_negative %}
+            {% set reason = "Negative price: charge to 100%" %}
+          {% elif not price_ok %}
+            {% set reason = "Price above ceiling (" ~ max_price_cents ~ "ct)" %}
+          {% elif not is_profitable %}
+            {% set reason = "Not profitable to charge" %}
+          {% elif falling and percentile > 25 %}
+            {% set reason = "Waiting: price dropping " ~ (price_drop | round(1)) ~ "ct" %}
+          {% elif percentile <= 10 %}
+            {% set reason = "Bottom 10%: aggressive (+20%)" %}
+          {% elif percentile <= 25 %}
+            {% set reason = "Bottom 25%: full target" %}
+          {% elif percentile <= 50 %}
+            {% set reason = "Bottom 50%: 80% of target" %}
+          {% elif percentile <= 70 %}
+            {% set reason = "Bottom 70%: conservative (high deficit)" %}
+          {% else %}
+            {% set reason = "Price too high: minimum target" %}
+          {% endif %}
           
           {
             "current_hour": {{ current_hour | round(1) }},
             "is_weekend": {{ is_weekend }},
             "wake_hour": {{ wake_hour }},
-            "night_hours_remaining": {{ night_hours | round(1) }},
-            "day_hours_remaining": {{ day_hours | round(1) }},
-            "expected_consumption_wh": {{ consumption | round(0) }},
+            "bridge_hours": {{ bridge_hours | round(1) }},
+            "bridge_type": "{{ bridge_type }}",
+            "bridge_consumption_wh": {{ bridge_consumption | round(0) }},
             "expected_solar_wh": {{ expected_solar_wh | round(0) }},
             "effective_solar_wh": {{ effective_solar | round(0) }},
+            "usable_solar_wh": {{ usable_solar | round(0) }},
             "is_low_solar_day": {{ is_low_solar_day }},
             "energy_deficit_wh": {{ deficit | round(0) }},
             "current_price_cents": {{ current_price_cents | round(2) }},
+            "next_price_cents": {{ next_price_cents | round(2) }},
+            "price_drop_cents": {{ price_drop | round(2) }},
             "max_price_cents": {{ max_price_cents }},
-            "price_percentile": {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}
+            "price_percentile": {{ percentile }},
+            "decision_reason": "{{ reason }}"
           }
 
     - name: "Computed Target SoC"
@@ -535,25 +580,29 @@
       unique_id: battery_charging_is_profitable_enhanced
       icon: mdi:cash-check
       state: >
-        {% set current_price = states('sensor.tibber_energy_prices') | float(default=999) %}
-        {% set current_price_cents = current_price * 100 %}
-        {% set max_price_24h = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
-        {% set avg_price_12h = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
+        {% set current_price_cents = states('sensor.tibber_energy_prices') | float(default=999) * 100 %}
+        {% set max_price_24h_cents = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
+        {% set avg_price_12h_cents = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
 
-        {# System parameters #}
-        {% set round_trip_efficiency = 0.90 %}
-        {% set battery_wear_cost_cents = states('input_number.battery_wear_cost_per_kwh') | float(default=2) %}
-        {% set min_spread_factor = 1.20 %}
+        {# Guard: if price data unavailable, don't charge speculatively #}
+        {% if max_price_24h_cents <= 0 or avg_price_12h_cents >= 999 %}
+          false
+        {% else %}
+          {# System parameters (all values in Cent/kWh) #}
+          {% set round_trip_efficiency = 0.90 %}
+          {% set battery_wear_cost_cents = states('input_number.battery_wear_cost_per_kwh') | float(default=2) %}
+          {% set min_spread_factor = 1.20 %}
 
-        {# Calculate effective costs #}
-        {% set effective_charge_cost = current_price_cents + battery_wear_cost_cents %}
-        {% set effective_discharge_value = max_price_24h * round_trip_efficiency %}
+          {# Effective costs #}
+          {% set effective_charge_cost_cents = current_price_cents + battery_wear_cost_cents %}
+          {% set effective_discharge_value_cents = max_price_24h_cents * round_trip_efficiency %}
 
-        {# Profitability conditions #}
-        {% set spread_sufficient = effective_discharge_value > (effective_charge_cost * min_spread_factor) %}
-        {% set below_average = current_price_cents < (avg_price_12h * 0.85) %}
+          {# Profitable if: discharge value > charge cost * 1.2 AND current price < 85% of average #}
+          {% set spread_sufficient = effective_discharge_value_cents > (effective_charge_cost_cents * min_spread_factor) %}
+          {% set below_average = current_price_cents < (avg_price_12h_cents * 0.85) %}
 
-        {{ spread_sufficient and below_average }}
+          {{ spread_sufficient and below_average }}
+        {% endif %}
 
 # Energy Flow Sensors for Visualization
 - sensor:
@@ -1089,10 +1138,12 @@
         {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
 
         {% if combined_prices and current_price != 'unknown' %}
-          {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | map(attribute='total') | list %}
-          {% if future_prices | length > 0 %}
-            {% set lower_count = future_prices | select('<', current_price) | list | length %}
-            {{ ((lower_count / future_prices | length) * 100) | round(0) }}
+          {# Include current interval by looking back 15 minutes #}
+          {% set window_start = current_time - timedelta(minutes=15) %}
+          {% set window_prices = combined_prices | selectattr('startsAt', '>=', window_start.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | map(attribute='total') | list %}
+          {% if window_prices | length > 0 %}
+            {% set lower_count = window_prices | select('<', current_price) | list | length %}
+            {{ ((lower_count / window_prices | length) * 100) | round(0) }}
           {% else %}
             unknown
           {% endif %}
