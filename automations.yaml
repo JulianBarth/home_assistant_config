@@ -169,6 +169,12 @@
                     entity_id:
                       - input_boolean.battery_charging_active
                       - input_boolean.battery_no_discharging_active
+                # Reset target to default (prevents stale 100% target from previous cycle)
+                - service: input_number.set_value
+                  target:
+                    entity_id: input_number.battery_target_soc
+                  data:
+                    value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
           # Normal operation - release controls only when appropriate
           default:
             - choose:
@@ -201,6 +207,12 @@
                     entity_id:
                       - input_boolean.battery_charging_active
                       - input_boolean.battery_no_discharging_active
+                # Reset target to default
+                - service: input_number.set_value
+                  target:
+                    entity_id: input_number.battery_target_soc
+                  data:
+                    value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
 - alias: Solcast update
   description: ""
   trigger:
