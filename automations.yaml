@@ -163,9 +163,12 @@
                 - service: input_boolean.turn_off
                   target:
                     entity_id: input_boolean.manual_battery_charge
-                # NOTE: We intentionally keep battery_no_discharging_active ON
-                # The prevent_discharge sensor will control when to release the lock
-                # This prevents the chainsaw pattern when reaching target SoC
+                # Clear both flags — prevent_discharge sensor handles ongoing protection
+                - service: input_boolean.turn_off
+                  target:
+                    entity_id:
+                      - input_boolean.battery_charging_active
+                      - input_boolean.battery_no_discharging_active
           # Normal operation - release controls only when appropriate
           default:
             - choose:

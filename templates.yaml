@@ -107,26 +107,21 @@
       unique_id: should_prevent_discharge
       icon: mdi:battery-lock-open
       state: >
-        {# Prevent discharging when battery is at or near computed target SoC #}
+        {# Prevent discharging when battery is near computed target SoC #}
+        {# IMPORTANT: This must NOT depend on battery_no_discharging_active #}
+        {# to avoid circular dependency (this sensor controls that flag) #}
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
-        {% set discharge_locked = is_state('input_boolean.battery_no_discharging_active', 'on') %}
         
         {# Buffer zone below target where we should prevent discharge #}
         {% set buffer = states('input_number.battery_discharge_buffer') | float(default=5) * 100 %}
         
-        {# Prevent discharge when: #}
-        {# 1. Currently at or above computed target AND (charging is active OR already locked) #}
-        {# 2. This keeps the lock active even after charging stops #}
-        {% set at_or_above_target = current_soc >= (computed_target - buffer) %}
-        {% set should_maintain_lock = charging_active or discharge_locked %}
+        {# Prevent discharge when: SoC is within buffer of target AND charging was/is active #}
+        {# Release when: SoC drops below (target - buffer) OR charging was never started #}
+        {% set near_target = current_soc >= (computed_target - buffer) %}
         
-        {# Release lock only when SoC drops significantly below target (2x buffer) #}
-        {% set release_threshold = computed_target - (buffer * 2) %}
-        {% set should_release = current_soc < release_threshold %}
-        
-        {{ at_or_above_target and should_maintain_lock and not should_release }}
+        {{ near_target and charging_active }}
 
 # Stable car charging detection with hysteresis
 - binary_sensor:
