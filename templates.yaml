@@ -53,17 +53,23 @@
         {% else %}
         {% set current_soc = soc_state | float(default=0) %}
         {% set target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
+        {% set default_min = states('input_number.soc_target_default') | float(default=15) * 100 %}
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
         {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
         {% set hysteresis_buffer = states('input_number.soc_hist') | float(default=5) * 50 %}
+
+        {# Only charge when algorithm actively wants to — computed_target must exceed #}
+        {# the Fronius minimum. When computed_target = default, no charging is needed #}
+        {# because Fronius handles min SoC natively. "Cheap" is relative to the day. #}
+        {% set charging_justified = target_soc > default_min %}
 
         {# Check if car is charging - don't interfere with car protection #}
         {% set car_is_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
         {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
         {% set car_protection_active = is_state('input_boolean.battery_no_discharging_active', 'on') %}
 
-        {# Allow starting if: normal conditions met AND (car not charging OR car protection already handled) #}
-        {% set basic_conditions = (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive %}
+        {# Allow starting if: SoC below target AND charging is justified AND car is safe #}
+        {% set basic_conditions = (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive and charging_justified %}
         {% set car_safe = not (car_is_charging and wallbox_not_eco and not car_protection_active) %}
 
         {{ basic_conditions and car_safe }}
