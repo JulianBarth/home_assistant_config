@@ -302,6 +302,12 @@ sensor:
     round: 2
     method: left
 
+# Structured algorithm logging (using command_line integration)
+command_line:
+  - notify:
+      name: battery_log
+      command: "sh -c 'cat >> /config/battery_algorithm.log; echo >> /config/battery_algorithm.log'"
+
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
