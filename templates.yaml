@@ -131,10 +131,10 @@
         {% if not (is_charging and wallbox_not_eco) %}
           {{ false }}
         {% else %}
-          {# Check if state has been stable for 3 minutes #}
+          {# Check if state has been stable for 60 seconds #}
           {% set last_changed = as_timestamp(states.sensor.wattpilot_carconnected.last_changed) %}
           {% set now_ts = as_timestamp(now()) %}
-          {% set stable_seconds = 180 %}
+          {% set stable_seconds = 60 %}
           {{ (now_ts - last_changed) >= stable_seconds }}
         {% endif %}
 
@@ -498,7 +498,8 @@
       unique_id: battery_control_mode
       icon: mdi:state-machine
       state: >
-        {% set car_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
+        {# Use car_charging_stable (hysteresis-protected) to prevent mode flapping #}
+        {% set car_charging = is_state('binary_sensor.car_charging_stable', 'on') %}
         {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
         {% set should_charge = is_state('binary_sensor.should_start_charging', 'on') %}
         {% set is_charging = is_state('input_boolean.battery_charging_active', 'on') %}
