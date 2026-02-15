@@ -46,44 +46,27 @@
     - name: "Should Start Charging"
       unique_id: should_start_charging
       state: >
-        {# Guard: reject invalid SoC readings (Modbus glitch protection) #}
-        {% set soc_state = states('sensor.reading_energy_battery_soc_scaled') %}
-        {% if soc_state in ['unavailable', 'unknown'] or soc_state | float(default=0) <= 0 %}
-          {{ false }}
-        {% else %}
-        {% set current_soc = soc_state | float(default=0) %}
+        {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {% set target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
-        {% set default_min = states('input_number.soc_target_default') | float(default=15) * 100 %}
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
         {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
         {% set hysteresis_buffer = states('input_number.soc_hist') | float(default=5) * 50 %}
-
-        {# Only charge when algorithm actively wants to — computed_target must exceed #}
-        {# the Fronius minimum. When computed_target = default, no charging is needed #}
-        {# because Fronius handles min SoC natively. "Cheap" is relative to the day. #}
-        {% set charging_justified = target_soc > default_min %}
 
         {# Check if car is charging - don't interfere with car protection #}
         {% set car_is_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
         {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
         {% set car_protection_active = is_state('input_boolean.battery_no_discharging_active', 'on') %}
 
-        {# Allow starting if: SoC below target AND charging is justified AND car is safe #}
-        {% set basic_conditions = (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive and charging_justified %}
+        {# Allow starting if: normal conditions met AND (car not charging OR car protection already handled) #}
+        {% set basic_conditions = (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive %}
         {% set car_safe = not (car_is_charging and wallbox_not_eco and not car_protection_active) %}
 
         {{ basic_conditions and car_safe }}
-        {% endif %}
 
     - name: "Should Stop Charging"
       unique_id: should_stop_charging
       state: >
-        {# Guard: reject invalid SoC readings (Modbus glitch protection) #}
-        {% set soc_state = states('sensor.reading_energy_battery_soc_scaled') %}
-        {% if soc_state in ['unavailable', 'unknown'] or soc_state | float(default=0) <= 0 %}
-          {{ false }}
-        {% else %}
-        {% set current_soc = soc_state | float(default=0) %}
+        {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
         {% set computed_target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
@@ -98,7 +81,6 @@
         {% set exceeds_computed_target = current_soc >= computed_target_soc %}
 
         {{ (reached_target or exceeds_computed_target) and charging_active }}
-        {% endif %}
 
     - name: "Should Hold Battery SOC"
       unique_id: should_hold_battery_soc
@@ -106,23 +88,40 @@
       state: >
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
+        {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+        {% set discharge_locked = is_state('input_boolean.battery_no_discharging_active', 'on') %}
         
         {# Hold threshold: configurable range around target (default ±3%) #}
         {% set hold_threshold = states('input_number.battery_hold_threshold') | float(default=3) * 100 %}
         
-        {# Hold SOC when actively charging AND approaching target (within hold_threshold) #}
+        {# Hold SOC when: #}
+        {# 1. Currently charging AND approaching target (within hold_threshold) #}
+        {# 2. OR already in discharge-locked mode AND still near target #}
         {% set approaching_target = charging_active and (current_soc >= (target_soc - hold_threshold)) %}
+        {% set maintaining_hold = discharge_locked and (current_soc >= (computed_target - hold_threshold)) %}
         
-        {{ approaching_target }}
+        {{ approaching_target or maintaining_hold }}
 
     - name: "Should Prevent Discharge"
       unique_id: should_prevent_discharge
       icon: mdi:battery-lock-open
       state: >
-        {# DISABLED: Fronius handles minimum reserve SoC natively #}
-        {# HA algorithm only manages cost-optimized charging #}
-        {{ false }}
+        {# Prevent discharging when battery is near computed target SoC #}
+        {# IMPORTANT: This must NOT depend on battery_no_discharging_active #}
+        {# to avoid circular dependency (this sensor controls that flag) #}
+        {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
+        {% set computed_target = states('sensor.computed_target_soc') | float(default=15) * 100 %}
+        {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+        
+        {# Buffer zone below target where we should prevent discharge #}
+        {% set buffer = states('input_number.battery_discharge_buffer') | float(default=5) * 100 %}
+        
+        {# Prevent discharge when: SoC is within buffer of target AND charging was/is active #}
+        {# Release when: SoC drops below (target - buffer) OR charging was never started #}
+        {% set near_target = current_soc >= (computed_target - buffer) %}
+        
+        {{ near_target and charging_active }}
 
 # Stable car charging detection with hysteresis
 - binary_sensor:

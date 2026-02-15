@@ -19,13 +19,18 @@ lovelace:
     - url: /hacsfiles/power-flow-card-plus/power-flow-card-plus.js
       type: module
   dashboards:
-    energy-overview:
+    lovelace:
       mode: yaml
       filename: ui-lovelace.yaml
       title: Overview
       icon: mdi:view-dashboard
       show_in_sidebar: true
-
+    lovelace-battery:
+      mode: yaml
+      title: Battery Management
+      icon: mdi:battery-charging
+      show_in_sidebar: true
+      filename: ui-lovelace.yaml
 
 # Helper
 input_boolean:
@@ -302,12 +307,6 @@ sensor:
     unit_prefix: k
     round: 2
     method: left
-
-# Structured algorithm logging (using command_line integration)
-command_line:
-  - notify:
-      name: battery_log
-      command: "sh -c 'cat >> /config/battery_algorithm.log; echo >> /config/battery_algorithm.log'"
 
 automation: !include automations.yaml
 script: !include scripts.yaml
