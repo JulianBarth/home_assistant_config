@@ -172,6 +172,29 @@ hold_battery_soc:
       target:
         entity_id: switch.StorCtl_Mod
 
+freeze_battery:
+  alias: "Freeze Battery"
+  description: "Prevent both charging and discharging — battery stays at current SoC"
+  sequence:
+    # OutWRte - Set discharge to 1% (minimal)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 100
+    # InWRte - Set charge to 1% (minimal — prevents grid charging)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 100
+    # Enable storage control mode
+    - action: switch.turn_on
+      target:
+        entity_id: switch.StorCtl_Mod
+
 # =============================================================================
 # TEST FUNCTIONS FOR HOLD SOC FUNCTIONALITY
 # These scripts allow users to test the hold SOC commands before deploying to production
