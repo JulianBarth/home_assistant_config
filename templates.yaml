@@ -553,7 +553,8 @@
         {% set avg_price_cents = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
         {% set avg_price = avg_price_cents / 100 %}
         {% set battery_soc = states('sensor.batterie_soc') | float(default=0) %}
-        {% set car_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
+        {# Use stable sensor to match battery_control_mode #}
+        {% set car_charging = is_state('binary_sensor.car_charging_stable', 'on') %}
 
         {% if not car_charging %}
           100  {# No car charging: full discharge allowed #}
