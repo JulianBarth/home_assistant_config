@@ -25,12 +25,7 @@ lovelace:
       title: Overview
       icon: mdi:view-dashboard
       show_in_sidebar: true
-    lovelace-battery:
-      mode: yaml
-      title: Battery Management
-      icon: mdi:battery-charging
-      show_in_sidebar: true
-      filename: ui-lovelace.yaml
+
 
 # Helper
 input_boolean:

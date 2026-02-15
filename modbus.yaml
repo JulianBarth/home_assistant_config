@@ -6,7 +6,7 @@
 # Fronius Symo Gen24 Plus 6.0
 # offset 40131 
 - type: tcp
-  host: 192.168.178.197  # direct to Fronius inverter WiFi (was .92 proxy)
+  host: 192.168.178.92
   timeout: 10  # increased timeout for WiFi stability
   retries: 3
   port: 502
