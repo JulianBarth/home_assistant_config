@@ -19,7 +19,7 @@ lovelace:
     - url: /hacsfiles/power-flow-card-plus/power-flow-card-plus.js
       type: module
   dashboards:
-    lovelace:
+    energy-overview:
       mode: yaml
       filename: ui-lovelace.yaml
       title: Overview
