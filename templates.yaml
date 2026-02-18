@@ -194,7 +194,7 @@
         {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
         {% set default_target = states('input_number.soc_target_default') | float(default=15) %}
         {% set round_trip_efficiency = 0.90 %}
-        {% set max_price_cents = states('input_number.max_charge_price_cents') | float(default=25) %}
+        {# Removed max_price_cents input #}
         {% set low_solar_threshold = states('input_number.low_solar_threshold_wh') | float(default=3000) %}
         
         {# === TIME CALCULATIONS === #}
@@ -211,7 +211,7 @@
         {% set price_drop_cents = next_price_cents - current_price_cents %}
         {% set is_falling_significantly = price_drop_cents < -1.5 %}
         {% set is_negative_price = current_price_eur < 0 %}
-        {% set price_below_ceiling = current_price_cents < max_price_cents %}
+        {# Removed absolute price ceiling check #}
         
         {# === SOLAR FORECAST === #}
         {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) %}
@@ -260,30 +260,37 @@
         {# Priority 1: Negative prices - always charge to 100% #}
         {% if is_negative_price %}
           100
-        {# Priority 2: Price above ceiling - maintain minimum only #}
-        {% elif not price_below_ceiling %}
-          {{ default_target }}
-        {# Priority 3: Not profitable to charge - maintain minimum #}
+        
+        {# Priority 2: Not profitable to charge - maintain minimum #}
+        {# "Not Profitable" means: (Future Peak * 0.90) <= (Current Price + Wear) #}
+        {# It is cheaper to buy from grid later than to store now #}
         {% elif not is_profitable %}
           {{ default_target }}
-        {# Priority 4: Price falling significantly (>1.5ct) - wait unless already very cheap #}
-        {% elif is_falling_significantly and percentile > 25 %}
-          {{ default_target }}
-        {# Priority 5: Very cheap prices (bottom 10%) - charge aggressively #}
+
+        {# Priority 3: Profitable + Very cheap (Bottom 10%) - Aggressive charging #}
+        {# Fill up + 20% buffer because it's a great price #}
         {% elif percentile <= 10 %}
           {{ [[calculated_target + 20, 100] | min, default_target] | max | round(0) }}
-        {# Priority 6: Cheap prices (bottom 25%) - charge to full calculated target #}
+
+        {# Priority 4: Profitable + Cheap (Bottom 25%) - Full Target #}
+        {# Fill up to cover the deficit #}
         {% elif percentile <= 25 %}
           {{ [[calculated_target, 100] | min, default_target] | max | round(0) }}
-        {# Priority 7: Moderate prices (bottom 50%) - charge 80% of target #}
+
+        {# Priority 5: Profitable + Moderate (Bottom 50%) - Hedge #}
+        {# Charge a bit (80% of deficit) just in case #}
         {% elif percentile <= 50 %}
           {% set adjusted_target = current_soc + (deficit_soc * 0.8) %}
           {{ [[adjusted_target, 90] | min, default_target] | max | round(0) }}
-        {# Priority 8: Higher prices but significant deficit - conservative charging #}
+        
+        {# Priority 6: Profitable but expensive time (Top 50%) #}
+        {# Even if profitable, we should wait for better prices if possible #}
+        {# Only charge if strict deficit requires it, but conservatively #}
         {% elif percentile <= 70 and energy_deficit_wh > (battery_capacity * 0.5) %}
           {% set adjusted_target = current_soc + (deficit_soc * 0.5) %}
           {{ [[adjusted_target, 70] | min, default_target] | max | round(0) }}
-        {# Default: Expensive or no significant need - maintain minimum #}
+        
+        {# Default: Maintain minimum #}
         {% else %}
           {{ default_target }}
         {% endif %}
@@ -297,7 +304,8 @@
           {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
           {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
           {% set low_solar_threshold = states('input_number.low_solar_threshold_wh') | float(default=3000) %}
-          {% set max_price_cents = states('input_number.max_charge_price_cents') | float(default=25) %}
+          {% set low_solar_threshold = states('input_number.low_solar_threshold_wh') | float(default=3000) %}
+          {# Removed max_price_cents input #}
           {% set current_hour = now().hour + (now().minute / 60) %}
           {% set is_weekend = now().weekday() >= 5 %}
           {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
@@ -332,28 +340,24 @@
           
           {% set price_drop = next_price_cents - current_price_cents %}
           {% set is_negative = current_price_cents < 0 %}
-          {% set price_ok = current_price_cents < max_price_cents %}
+          {# Removed absolute price ceiling check #}
           {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
           {% set falling = price_drop < -1.5 %}
           
           {% if is_negative %}
             {% set reason = "Negative price: charge to 100%" %}
-          {% elif not price_ok %}
-            {% set reason = "Price above ceiling (" ~ max_price_cents ~ "ct)" %}
           {% elif not is_profitable %}
-            {% set reason = "Not profitable to charge" %}
-          {% elif falling and percentile > 25 %}
-            {% set reason = "Waiting: price dropping " ~ (price_drop | round(1)) ~ "ct" %}
+             {% set reason = "Not profitable: Buy later < Store now" %}
           {% elif percentile <= 10 %}
             {% set reason = "Bottom 10%: aggressive (+20%)" %}
           {% elif percentile <= 25 %}
             {% set reason = "Bottom 25%: full target" %}
           {% elif percentile <= 50 %}
             {% set reason = "Bottom 50%: 80% of target" %}
-          {% elif percentile <= 70 %}
-            {% set reason = "Bottom 70%: conservative (high deficit)" %}
+          {% elif percentile <= 70 and deficit > (battery_capacity * 0.5) %}
+            {% set reason = "Bottom 70% + High Deficit: conservative" %}
           {% else %}
-            {% set reason = "Price too high: minimum target" %}
+            {% set reason = "Profitable but high percentile: minimum target" %}
           {% endif %}
           
           {
@@ -371,7 +375,7 @@
             "current_price_cents": {{ current_price_cents | round(2) }},
             "next_price_cents": {{ next_price_cents | round(2) }},
             "price_drop_cents": {{ price_drop | round(2) }},
-            "max_price_cents": {{ max_price_cents }},
+            "max_price_cents": "N/A",
             "price_percentile": {{ percentile }},
             "decision_reason": "{{ reason }}"
           }
@@ -589,11 +593,14 @@
           {% set effective_charge_cost_cents = current_price_cents + battery_wear_cost_cents %}
           {% set effective_discharge_value_cents = max_price_24h_cents * round_trip_efficiency %}
 
-          {# Profitable if: discharge value > charge cost * 1.2 AND current price < 85% of average #}
-          {% set spread_sufficient = effective_discharge_value_cents > (effective_charge_cost_cents * min_spread_factor) %}
-          {% set below_average = current_price_cents < (avg_price_12h_cents * 0.85) %}
+          {# Profitable if: discharge value > charge cost #}
+          {# Value of stored energy = Highest future price * Efficiency #}
+          {# Cost of stored energy = Current price + Wear cost #}
+          {% set discharge_value = max_price_24h_cents * round_trip_efficiency %}
+          {% set charge_cost = current_price_cents + battery_wear_cost_cents %}
 
-          {{ spread_sufficient and below_average }}
+          {# Profitable if we can sell/use it later for more than it costs now #}
+          {{ discharge_value > charge_cost }}
         {% endif %}
 
 # Energy Flow Sensors for Visualization
