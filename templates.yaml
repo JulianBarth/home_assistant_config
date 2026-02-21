@@ -114,9 +114,23 @@
       unique_id: should_prevent_discharge
       icon: mdi:battery-lock-open
       state: >
-        {# DISABLED: Fronius handles minimum reserve SoC natively #}
-        {# HA algorithm only manages cost-optimized charging #}
-        {{ false }}
+        {# Prevent discharge if we are at or below the target SoC and not actively charging #}
+        {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
+        {% set target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
+        {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
+        {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
+        {% set current_state = is_state('binary_sensor.should_prevent_discharge', 'on') %}
+        {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
+
+        {% if not automation_on or not charging_inactive %}
+          {{ false }}
+        {% elif current_state %}
+          {# Stay ON until we exceed the target + hysteresis #}
+          {{ current_soc < (target_soc + hysteresis) }}
+        {% else %}
+          {# Turn ON if we drop to or below the target #}
+          {{ current_soc <= target_soc }}
+        {% endif %}
 
 # Stable car charging detection with hysteresis
 - binary_sensor:
