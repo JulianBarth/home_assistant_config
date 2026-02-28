@@ -959,8 +959,8 @@ views:
       - type: markdown
         title: "☀️ Solar Forecast Debug"
         content: |
-          **Remaining Today:** {{ states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') }} Wh
-          **Forecast Next Hours:** {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') }} Wh
+          **Remaining Today:** {{ (states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000) | round(0) }} Wh
+          **Forecast Next Hours:** {{ (states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=0) * 1000) | round(0) }} Wh
           **Low Solar Threshold:** {{ states('input_number.low_solar_threshold_wh') }} Wh
 
           **Flags:**

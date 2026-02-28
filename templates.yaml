@@ -33,13 +33,13 @@
       unique_id: expected_sun_low
       device_class: power
       state: >
-        {{ states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=50000) <= states('input_number.sun_threshold_low') | float(default=15000) }}
+        {{ (states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=50) * 1000) <= states('input_number.sun_threshold_low') | float(default=15000) }}
 
     - name: "Expected Sun Very Low"
       unique_id: expected_sun_very_low
       device_class: power
       state: >
-        {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=50000) <= states('input_number.sun_threshold_very_low') | float(default=8000) }}
+        {{ (states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=50) * 1000) <= states('input_number.sun_threshold_very_low') | float(default=8000) }}
 
 # Binary sensor for charging conditions
 - binary_sensor:
@@ -228,7 +228,7 @@
         {# Removed absolute price ceiling check #}
         
         {# === SOLAR FORECAST === #}
-        {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) %}
+        {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000 %}
         {% set current_soc = states('sensor.batterie_soc') | float(default=15) %}
         
         {# === SMART WINTER MODE (solar-forecast based) === #}
@@ -323,7 +323,7 @@
           {% set current_hour = now().hour + (now().minute / 60) %}
           {% set is_weekend = now().weekday() >= 5 %}
           {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
-          {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) %}
+          {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000 %}
           {% set current_price_cents = states('sensor.tibber_energy_prices') | float(default=0) * 100 %}
           {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
           {% set is_low_solar_day = expected_solar_wh < low_solar_threshold %}
