@@ -231,9 +231,12 @@
         {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000 %}
         {% set current_soc = states('sensor.batterie_soc') | float(default=15) %}
         
-        {# === SMART WINTER MODE (solar-forecast based) === #}
-        {# When solar forecast is very low, ignore solar in calculations #}
-        {% set is_low_solar_day = expected_solar_wh < low_solar_threshold %}
+        {# === SMART WINTER MODE (solar-forecast based, time-aware) === #}
+        {# Only apply low-solar logic before solar noon (13:00). #}
+        {# After noon, remaining solar naturally drops on ANY sunny day — #}
+        {# that's not a signal to panic-charge from the grid. #}
+        {% set solar_noon = 13 %}
+        {% set is_low_solar_day = expected_solar_wh < low_solar_threshold and current_hour < solar_noon %}
         {% set effective_solar = 0 if is_low_solar_day else expected_solar_wh %}
         
         {# === BRIDGE PERIOD CALCULATION === #}
@@ -262,13 +265,22 @@
         {% else %}
           {% set usable_solar = 0 %}
         {% endif %}
-        {% set energy_deficit_wh = [bridge_consumption_wh - usable_solar, 0] | max %}
+        
+        {# === FIX: Account for energy already stored in battery === #}
+        {# The battery already holds energy above the minimum — this reduces the true deficit #}
+        {% set current_stored_wh = [(current_soc - default_target) / 100 * battery_capacity, 0] | max %}
+        {% set energy_deficit_wh = [bridge_consumption_wh - usable_solar - current_stored_wh, 0] | max %}
         {# Cap deficit at battery capacity — can't charge more than 100% #}
         {% set energy_deficit_wh = [energy_deficit_wh, battery_capacity] | min %}
         
         {# Convert deficit to SoC percentage #}
         {% set deficit_soc = (energy_deficit_wh / battery_capacity * 100) | round(0) %}
-        {% set calculated_target = [default_target + deficit_soc, 100] | min %}
+        
+        {# === FIX: Cap target so grid charging leaves room for free solar === #}
+        {# Don't grid-charge to 90% if solar will push it to 100% anyway #}
+        {% set solar_soc_equivalent = (usable_solar / battery_capacity * 100) | round(0) %}
+        {% set max_grid_target = [100 - solar_soc_equivalent, default_target] | max %}
+        {% set calculated_target = [[default_target + deficit_soc, max_grid_target] | min, 100] | min %}
         
         {# === FINAL TARGET CALCULATION === #}
         {# Priority 1: Negative prices - always charge to 100% #}
@@ -318,15 +330,17 @@
           {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
           {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
           {% set low_solar_threshold = states('input_number.low_solar_threshold_wh') | float(default=3000) %}
-          {% set low_solar_threshold = states('input_number.low_solar_threshold_wh') | float(default=3000) %}
           {# Removed max_price_cents input #}
           {% set current_hour = now().hour + (now().minute / 60) %}
           {% set is_weekend = now().weekday() >= 5 %}
           {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
           {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000 %}
+          {% set current_soc = states('sensor.batterie_soc') | float(default=15) %}
+          {% set default_target = states('input_number.soc_target_default') | float(default=15) %}
           {% set current_price_cents = states('sensor.tibber_energy_prices') | float(default=0) * 100 %}
           {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
-          {% set is_low_solar_day = expected_solar_wh < low_solar_threshold %}
+          {% set solar_noon = 13 %}
+          {% set is_low_solar_day = expected_solar_wh < low_solar_threshold and current_hour < solar_noon %}
           {% set effective_solar = 0 if is_low_solar_day else expected_solar_wh %}
           {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
           
@@ -349,8 +363,11 @@
           {% else %}
             {% set usable_solar = 0 %}
           {% endif %}
-          {% set deficit = [bridge_consumption - usable_solar, 0] | max %}
+          {% set current_stored_wh = [(current_soc - default_target) / 100 * battery_capacity, 0] | max %}
+          {% set deficit = [bridge_consumption - usable_solar - current_stored_wh, 0] | max %}
           {% set deficit = [deficit, battery_capacity] | min %}
+          {% set solar_soc_equivalent = (usable_solar / battery_capacity * 100) | round(0) %}
+          {% set max_grid_target = [100 - solar_soc_equivalent, default_target] | max %}
           
           {% set price_drop = next_price_cents - current_price_cents %}
           {% set is_negative = current_price_cents < 0 %}
@@ -385,11 +402,13 @@
             "effective_solar_wh": {{ effective_solar | round(0) }},
             "usable_solar_wh": {{ usable_solar | round(0) }},
             "is_low_solar_day": {{ is_low_solar_day }},
+            "current_stored_wh": {{ current_stored_wh | round(0) }},
             "energy_deficit_wh": {{ deficit | round(0) }},
+            "solar_soc_equivalent": {{ solar_soc_equivalent }},
+            "max_grid_target": {{ max_grid_target | round(0) }},
             "current_price_cents": {{ current_price_cents | round(2) }},
             "next_price_cents": {{ next_price_cents | round(2) }},
             "price_drop_cents": {{ price_drop | round(2) }},
-            "max_price_cents": "N/A",
             "price_percentile": {{ percentile }},
             "decision_reason": "{{ reason }}"
           }
