@@ -294,9 +294,9 @@
           {{ default_target }}
 
         {# Priority 3: Profitable + Very cheap (Bottom 10%) - Aggressive charging #}
-        {# Fill up + 20% buffer because it's a great price #}
+        {# Fill up + 20% buffer because it's a great price, but respect solar headroom #}
         {% elif percentile <= 10 %}
-          {{ [[calculated_target + 20, 100] | min, default_target] | max | round(0) }}
+          {{ [[[calculated_target + 20, max_grid_target] | min, 100] | min, default_target] | max | round(0) }}
 
         {# Priority 4: Profitable + Cheap (Bottom 25%) - Full Target #}
         {# Fill up to cover the deficit #}
@@ -306,15 +306,15 @@
         {# Priority 5: Profitable + Moderate (Bottom 50%) - Hedge #}
         {# Charge a bit (80% of deficit) just in case #}
         {% elif percentile <= 50 %}
-          {% set adjusted_target = current_soc + (deficit_soc * 0.8) %}
-          {{ [[adjusted_target, 90] | min, default_target] | max | round(0) }}
+          {% set hedged_target = default_target + (deficit_soc * 0.8) %}
+          {{ [[[hedged_target, max_grid_target] | min, 100] | min, default_target] | max | round(0) }}
         
         {# Priority 6: Profitable but expensive time (Top 50%) #}
         {# Even if profitable, we should wait for better prices if possible #}
         {# Only charge if strict deficit requires it, but conservatively #}
         {% elif percentile <= 70 and energy_deficit_wh > (battery_capacity * 0.5) %}
-          {% set adjusted_target = current_soc + (deficit_soc * 0.5) %}
-          {{ [[adjusted_target, 70] | min, default_target] | max | round(0) }}
+          {% set conservative_target = default_target + (deficit_soc * 0.5) %}
+          {{ [[[conservative_target, max_grid_target] | min, 70] | min, default_target] | max | round(0) }}
         
         {# Default: Maintain minimum #}
         {% else %}
