@@ -96,7 +96,7 @@
 
     - name: "Should Hold Battery SOC"
       unique_id: should_hold_battery_soc
-      icon: mdi:battery-lock
+      icon: mdi:battery-pause
       state: >
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
@@ -108,7 +108,10 @@
         {# Hold SOC when actively charging AND approaching target (within hold_threshold) #}
         {% set approaching_target = charging_active and (current_soc >= (target_soc - hold_threshold)) %}
         
-        {{ approaching_target }}
+        {# FIX: Disable hold mode if target is 100% (allows full charging) #}
+        {% set target_not_full = target_soc < 9800 %}
+        
+        {{ approaching_target and target_not_full }}
 
     - name: "Should Prevent Discharge"
       unique_id: should_prevent_discharge
@@ -216,6 +219,12 @@
         {% set is_weekend = now().weekday() >= 5 %}
         {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
         
+        {# === SUNRISE & BREAKFAST GAP === #}
+        {% set nr = as_datetime(state_attr('sun.sun','next_rising')) | as_local %}
+        {% set sunrise_hour = nr.hour + (nr.minute / 60) %}
+        {# Add 1 hour buffer for solar to cover house load #}
+        {% set solar_start_hour = [sunrise_hour + 1.0, 9.0] | min %}
+        
         {# === PRICE CONDITIONS === #}
         {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
         {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
@@ -241,30 +250,36 @@
         
         {# === BRIDGE PERIOD CALCULATION === #}
         {# Only forecast hours the battery must cover until next energy source #}
-        {# At night: bridge until wake (proxy for sunrise/solar start) #}
+        {# At night: bridge until solar_start (includes breakfast gap) #}
         {# During day: bridge until sleep, offset by remaining solar #}
         
         {% if current_hour < wake_hour %}
-          {# Night (early morning): bridge until wake #}
-          {% set bridge_hours = wake_hour - current_hour %}
-          {% set bridge_consumption_wh = bridge_hours * night_rate %}
+          {# Night (early morning): bridge until solar start #}
+          {% set night_hours = wake_hour - current_hour %}
+          {% set breakfast_hours = [solar_start_hour - wake_hour, 0] | max %}
+          {% set bridge_consumption_wh = (night_hours * night_rate) + (breakfast_hours * day_rate) %}
+          {% set bridge_hours = night_hours + breakfast_hours %}
         {% elif current_hour < sleep_hour %}
           {# Day period: bridge until sleep #}
           {% set bridge_hours = sleep_hour - current_hour %}
           {% set bridge_consumption_wh = bridge_hours * day_rate %}
         {% else %}
-          {# Night (after sleep): bridge until tomorrow wake #}
-          {% set bridge_hours = (24 - current_hour) + wake_hour %}
-          {% set bridge_consumption_wh = bridge_hours * night_rate %}
+          {# Night (after sleep): bridge until tomorrow solar start #}
+          {# We assume wake hour and solar start are similar to today #}
+          {% set night_hours = (24 - current_hour) + wake_hour %}
+          {% set breakfast_hours = [solar_start_hour - wake_hour, 0] | max %}
+          {% set bridge_consumption_wh = (night_hours * night_rate) + (breakfast_hours * day_rate) %}
+          {% set bridge_hours = night_hours + breakfast_hours %}
         {% endif %}
         
         {# === ENERGY DEFICIT === #}
-        {# Subtract solar only during daytime (at night solar = 0) #}
-        {% if current_hour >= wake_hour and current_hour < sleep_hour %}
+        {# Subtract solar only after solar_start (not just wake) #}
+        {% if current_hour >= solar_start_hour and current_hour < sleep_hour %}
           {% set usable_solar = effective_solar * round_trip_efficiency %}
         {% else %}
           {% set usable_solar = 0 %}
         {% endif %}
+
         
         {# === FIX: Account for energy already stored in battery === #}
         {# The battery already holds energy above the minimum — this reduces the true deficit #}
@@ -278,7 +293,16 @@
         
         {# === FIX: Cap target so grid charging leaves room for free solar === #}
         {# Don't grid-charge to 90% if solar will push it to 100% anyway #}
-        {% set solar_soc_equivalent = (usable_solar / battery_capacity * 100) | round(0) %}
+        {# At night, usable_solar is 0 here, but we check tomorrow's potential headroom #}
+        {% if current_hour < solar_start_hour or current_hour >= sleep_hour %}
+          {# Night/Evening: use the solar from the upcoming day for headroom #}
+          {% set headroom_solar = effective_solar %}
+        {% else %}
+          {# Daytime: use remaining solar today #}
+          {% set headroom_solar = usable_solar %}
+        {% endif %}
+        
+        {% set solar_soc_equivalent = (headroom_solar / battery_capacity * 100) | round(0) %}
         {% set max_grid_target = [100 - solar_soc_equivalent, default_target] | max %}
         {% set calculated_target = [[default_target + deficit_soc, max_grid_target] | min, 100] | min %}
         
@@ -330,7 +354,11 @@
           {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
           {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
           {% set low_solar_threshold = states('input_number.low_solar_threshold_wh') | float(default=3000) %}
-          {# Removed max_price_cents input #}
+          
+          {% set nr = as_datetime(state_attr('sun.sun','next_rising')) | as_local %}
+          {% set sunrise_hour = nr.hour + (nr.minute / 60) %}
+          {% set solar_start_hour = [sunrise_hour + 1.0, 9.0] | min %}
+          
           {% set current_hour = now().hour + (now().minute / 60) %}
           {% set is_weekend = now().weekday() >= 5 %}
           {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
@@ -345,28 +373,35 @@
           {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
           
           {% if current_hour < wake_hour %}
-            {% set bridge_hours = wake_hour - current_hour %}
-            {% set bridge_consumption = bridge_hours * night_rate %}
-            {% set bridge_type = "night_to_wake" %}
+            {% set night_hours = wake_hour - current_hour %}
+            {% set breakfast_hours = [solar_start_hour - wake_hour, 0] | max %}
+            {% set bridge_consumption = (night_hours * night_rate) + (breakfast_hours * day_rate) %}
+            {% set bridge_hours = night_hours + breakfast_hours %}
+            {% set bridge_type = "night_to_solar" %}
           {% elif current_hour < sleep_hour %}
             {% set bridge_hours = sleep_hour - current_hour %}
             {% set bridge_consumption = bridge_hours * day_rate %}
             {% set bridge_type = "day_to_sleep" %}
           {% else %}
-            {% set bridge_hours = (24 - current_hour) + wake_hour %}
-            {% set bridge_consumption = bridge_hours * night_rate %}
-            {% set bridge_type = "night_to_wake" %}
+            {% set night_hours = (24 - current_hour) + wake_hour %}
+            {% set breakfast_hours = [solar_start_hour - wake_hour, 0] | max %}
+            {% set bridge_consumption = (night_hours * night_rate) + (breakfast_hours * day_rate) %}
+            {% set bridge_hours = night_hours + breakfast_hours %}
+            {% set bridge_type = "sleep_to_solar_next" %}
           {% endif %}
           
-          {% if current_hour >= wake_hour and current_hour < sleep_hour %}
-            {% set usable_solar = effective_solar * 0.9 %}
-          {% else %}
+          {% if current_hour < solar_start_hour or current_hour >= sleep_hour %}
             {% set usable_solar = 0 %}
+            {% set headroom_solar = effective_solar %}
+          {% else %}
+            {% set usable_solar = effective_solar * 0.9 %}
+            {% set headroom_solar = usable_solar %}
           {% endif %}
+          
           {% set current_stored_wh = [(current_soc - default_target) / 100 * battery_capacity, 0] | max %}
           {% set deficit = [bridge_consumption - usable_solar - current_stored_wh, 0] | max %}
           {% set deficit = [deficit, battery_capacity] | min %}
-          {% set solar_soc_equivalent = (usable_solar / battery_capacity * 100) | round(0) %}
+          {% set solar_soc_equivalent = (headroom_solar / battery_capacity * 100) | round(0) %}
           {% set max_grid_target = [100 - solar_soc_equivalent, default_target] | max %}
           
           {% set price_drop = next_price_cents - current_price_cents %}
@@ -393,24 +428,20 @@
           
           {
             "current_hour": {{ current_hour | round(1) }},
-            "is_weekend": {{ is_weekend }},
-            "wake_hour": {{ wake_hour }},
+            "sunrise_hour": {{ sunrise_hour | round(2) }},
+            "solar_start": {{ solar_start_hour | round(2) }},
             "bridge_hours": {{ bridge_hours | round(1) }},
             "bridge_type": "{{ bridge_type }}",
             "bridge_consumption_wh": {{ bridge_consumption | round(0) }},
             "expected_solar_wh": {{ expected_solar_wh | round(0) }},
-            "effective_solar_wh": {{ effective_solar | round(0) }},
             "usable_solar_wh": {{ usable_solar | round(0) }},
             "is_low_solar_day": {{ is_low_solar_day }},
             "current_stored_wh": {{ current_stored_wh | round(0) }},
             "energy_deficit_wh": {{ deficit | round(0) }},
-            "solar_soc_equivalent": {{ solar_soc_equivalent }},
             "max_grid_target": {{ max_grid_target | round(0) }},
-            "current_price_cents": {{ current_price_cents | round(2) }},
+            "decision_reason": "{{ reason }}",
             "next_price_cents": {{ next_price_cents | round(2) }},
-            "price_drop_cents": {{ price_drop | round(2) }},
-            "price_percentile": {{ percentile }},
-            "decision_reason": "{{ reason }}"
+            "price_drop_cents": {{ price_drop | round(2) }}
           }
 
     - name: "Computed Target SoC"
@@ -586,22 +617,29 @@
       unit_of_measurement: "%"
       icon: mdi:battery-arrow-down
       state: >
-        {% set current_price = states('sensor.tibber_energy_prices') | float(default=0) %}
-        {% set avg_price_cents = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
-        {% set avg_price = avg_price_cents / 100 %}
-        {% set battery_soc = states('sensor.batterie_soc') | float(default=0) %}
-        {# Use stable sensor to match battery_control_mode #}
+        {# Dynamic discharge limit based on house load and car charging state #}
+        {# Goal: House from battery, Car from grid (billed to employer) #}
         {% set car_charging = is_state('binary_sensor.car_charging_stable', 'on') %}
-
+        {% set battery_max_power = 6000 %} {# Confirmed 6kW for Fronius Gen24 6.0 #}
+        
         {% if not car_charging %}
-          100  {# No car charging: full discharge allowed #}
-        {% elif current_price > (avg_price * 1.5) and battery_soc > 60 %}
-          50  {# Very high prices + good battery: allow 50% discharge #}
-        {% elif current_price > (avg_price * 1.2) and battery_soc > 40 %}
-          30  {# High prices + decent battery: allow 30% discharge #}
+          {{ 100 }}
         {% else %}
-          10  {# Default during car charging: 10% limit #}
+          {# Calculate true house load (source-independent) #}
+          {# Total load = grid_import + inverter_ac_output (all sources feeding the house) #}
+          {# House load = Total load - Wallbox #}
+          {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
+          {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
+          {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
+          {% set total_consumption = [grid_power, 0] | max + ac_output %}
+          {% set house_load = [total_consumption - wallbox_power, 0] | max %}
+          
+          {# Only allow enough discharge to cover the house load + 15% safety margin #}
+          {% set desired_limit = (house_load * 1.15 / battery_max_power * 100) | round(1) %}
+          {# Clamp between 1% (minimum to keep battery responsive) and 100% #}
+          {{ [[desired_limit, 1.0] | max, 100] | min }}
         {% endif %}
+
 
 # Enhanced profitability calculation
 - binary_sensor:
