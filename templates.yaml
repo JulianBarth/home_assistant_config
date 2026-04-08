@@ -267,13 +267,16 @@
           {% set breakfast_hours = [solar_start_hour - wake_hour, 0] | max %}
           {% set bridge_consumption_wh = (night_hours * night_rate) + (breakfast_hours * day_rate) %}
           {% set bridge_hours = night_hours + breakfast_hours %}
+        {% elif current_hour < solar_start_hour %}
+          {# Breakfast gap: awake but no solar yet — bridge until solar arrives #}
+          {% set bridge_hours = solar_start_hour - current_hour %}
+          {% set bridge_consumption_wh = bridge_hours * day_rate %}
         {% elif current_hour < sleep_hour %}
-          {# Day period: bridge until sleep #}
+          {# Day period (solar active): bridge until sleep #}
           {% set bridge_hours = sleep_hour - current_hour %}
           {% set bridge_consumption_wh = bridge_hours * day_rate %}
         {% else %}
           {# Night (after sleep): bridge until tomorrow solar start #}
-          {# We assume wake hour and solar start are similar to today #}
           {% set night_hours = (24 - current_hour) + wake_hour %}
           {% set breakfast_hours = [solar_start_hour - wake_hour, 0] | max %}
           {% set bridge_consumption_wh = (night_hours * night_rate) + (breakfast_hours * day_rate) %}
@@ -392,6 +395,10 @@
             {% set bridge_consumption = (night_hours * night_rate) + (breakfast_hours * day_rate) %}
             {% set bridge_hours = night_hours + breakfast_hours %}
             {% set bridge_type = "night_to_solar" %}
+          {% elif current_hour < solar_start_hour %}
+            {% set bridge_hours = solar_start_hour - current_hour %}
+            {% set bridge_consumption = bridge_hours * day_rate %}
+            {% set bridge_type = "breakfast_gap" %}
           {% elif current_hour < sleep_hour %}
             {% set bridge_hours = sleep_hour - current_hour %}
             {% set bridge_consumption = bridge_hours * day_rate %}
