@@ -55,6 +55,7 @@
         {% set target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set default_min = states('input_number.soc_target_default') | float(default=15) * 100 %}
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
+        {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
         {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
         {% set hysteresis_buffer = states('input_number.soc_hist') | float(default=5) * 50 %}
 
@@ -69,7 +70,7 @@
         {% set car_protection_active = is_state('input_boolean.battery_no_discharging_active', 'on') %}
 
         {# Allow starting if: normal conditions met AND (car not charging OR car protection already handled) #}
-        {% set basic_conditions = (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive and charging_justified %}
+        {% set basic_conditions = price_data_valid and (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive and charging_justified %}
         {% set car_safe = not (car_is_charging and wallbox_not_eco and not car_protection_active) %}
 
         {{ basic_conditions and car_safe }}
@@ -82,6 +83,7 @@
         {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
         {% set computed_target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+        {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
 
         {# Hysteresis: multiply by 50 to convert % to scaled SoC units #}
         {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
@@ -90,7 +92,7 @@
         {# 1. Battery reaches the original target plus hysteresis OR #}
         {# 2. Battery exceeds the current computed target (respond immediately when prices increase) #}
         {% set reached_target = current_soc >= (target_soc + hysteresis) %}
-        {% set exceeds_computed_target = current_soc >= computed_target_soc %}
+        {% set exceeds_computed_target = price_data_valid and current_soc >= computed_target_soc %}
 
         {{ (reached_target or exceeds_computed_target) and charging_active }}
 
@@ -228,7 +230,8 @@
         {# === PRICE CONDITIONS === #}
         {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
         {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
-        {% set current_price_eur = states('sensor.tibber_energy_prices') | float(default=0) %}
+        {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
+        {% set current_price_eur = states('sensor.tibber_cached_energy_prices') | float(default=999) %}
         {% set current_price_cents = current_price_eur * 100 %}
         {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
         {% set price_drop_cents = next_price_cents - current_price_cents %}
@@ -319,7 +322,9 @@
         
         {# === FINAL TARGET CALCULATION === #}
         {# Priority 1: Negative prices - always charge to 100% #}
-        {% if is_negative_price %}
+        {% if not price_data_valid %}
+          {{ default_target }}
+        {% elif is_negative_price %}
           100
         
         {# Priority 2: Not profitable to charge - maintain minimum #}
@@ -382,7 +387,8 @@
           {% endif %}
           {% set current_soc = states('sensor.batterie_soc') | float(default=15) %}
           {% set default_target = states('input_number.soc_target_default') | float(default=15) %}
-          {% set current_price_cents = states('sensor.tibber_energy_prices') | float(default=0) * 100 %}
+          {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
+          {% set current_price_cents = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
           {% set next_price_cents = states('sensor.tibber_energy_price_next_hour') | float(default=999) %}
           {% set solar_noon = 13 %}
           {% set is_low_solar_day = expected_solar_wh < low_solar_threshold and current_hour < solar_noon %}
@@ -431,7 +437,9 @@
           {% set is_profitable = is_state('binary_sensor.battery_charging_is_profitable_enhanced', 'on') %}
           {% set falling = price_drop < -1.5 %}
           
-          {% if is_negative %}
+          {% if not price_data_valid %}
+            {% set reason = "Price data invalid: maintain minimum target" %}
+          {% elif is_negative %}
             {% set reason = "Negative price: charge to 100%" %}
           {% elif not is_profitable %}
              {% set reason = "Not profitable: Buy later < Store now" %}
@@ -622,7 +630,7 @@
         {% set home_power = states('sensor.home_consumption_power') | float(default=2000) %}
         {% set battery_charge_rate = states('input_number.battery_charge_rate_max') | float(default=5000) %}
         {% set grid_capacity = states('input_number.grid_connection_capacity') | float(default=20000) %}
-        {% set current_price_cents = states('sensor.tibber_energy_prices') | float(default=999) * 100 %}
+        {% set current_price_cents = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
         {% set avg_price = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
 
         {% set total_load = car_power + home_power + battery_charge_rate %}
@@ -668,7 +676,7 @@
       unique_id: battery_charging_is_profitable_enhanced
       icon: mdi:cash-check
       state: >
-        {% set current_price_cents = states('sensor.tibber_energy_prices') | float(default=999) * 100 %}
+        {% set current_price_cents = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
         {% set max_price_24h_cents = states('sensor.tibber_energy_highest_price_next_24_hours') | float(default=0) %}
         {% set avg_price_12h_cents = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
 
@@ -1106,6 +1114,166 @@
 # ============================================================================
 # Tibber Price Sensors (Migrated from deprecated platform: template syntax)
 # ============================================================================
+- trigger:
+    - platform: state
+      entity_id: sensor.tibber_energy_prices
+    - platform: time_pattern
+      minutes: "/15"
+    - platform: homeassistant
+      event: start
+  sensor:
+    - name: "Tibber Cached Energy Prices"
+      unique_id: tibber_cached_energy_prices
+      unit_of_measurement: "EUR/kWh"
+      icon: mdi:currency-eur
+      state: >
+        {% set invalid = ['unknown', 'unavailable', 'none', 'None'] %}
+        {% set source_state = states('sensor.tibber_energy_prices') %}
+        {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
+        {% set source_tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') or [] %}
+        {% set source_prices = source_today + source_tomorrow %}
+        {% set source_valid = source_state not in invalid and source_prices | length > 0 %}
+        {% set cached_today = this.attributes.get('today', []) if this is defined else [] %}
+        {% set cached_tomorrow = this.attributes.get('tomorrow', []) if this is defined else [] %}
+        {% set cached_prices = cached_today + cached_tomorrow %}
+        {% set source_valid_until = as_datetime(source_prices[-1].startsAt) + timedelta(minutes=15) if source_prices | length > 0 else none %}
+        {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
+        {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
+        {% set use_source = source_valid and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
+        {% set prices = source_prices if use_source else cached_prices %}
+        {% set active_prices = prices | selectattr('startsAt', '<=', now().isoformat()) | list %}
+        {% if active_prices | length > 0 %}
+          {% set active_start = as_datetime(active_prices[-1].startsAt) %}
+          {% if active_start and (now() - active_start).total_seconds() <= 900 %}
+            {{ active_prices[-1].total }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% else %}
+          unknown
+        {% endif %}
+      attributes:
+        today: >
+          {% set source_state = states('sensor.tibber_energy_prices') %}
+          {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
+          {% set source_tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') or [] %}
+          {% set source_prices = source_today + source_tomorrow %}
+          {% set cached_today = this.attributes.get('today', []) if this is defined else [] %}
+          {% set cached_tomorrow = this.attributes.get('tomorrow', []) if this is defined else [] %}
+          {% set cached_prices = cached_today + cached_tomorrow %}
+          {% set source_valid_until = as_datetime(source_prices[-1].startsAt) + timedelta(minutes=15) if source_prices | length > 0 else none %}
+          {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
+          {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
+          {% set use_source = source_state not in ['unknown', 'unavailable', 'none', 'None'] and source_prices | length > 0 and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
+          {% if use_source %}
+            {{ source_today }}
+          {% else %}
+            {{ this.attributes.get('today', []) if this is defined else [] }}
+          {% endif %}
+        tomorrow: >
+          {% set source_state = states('sensor.tibber_energy_prices') %}
+          {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
+          {% set source_tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') or [] %}
+          {% set source_prices = source_today + source_tomorrow %}
+          {% set cached_today = this.attributes.get('today', []) if this is defined else [] %}
+          {% set cached_tomorrow = this.attributes.get('tomorrow', []) if this is defined else [] %}
+          {% set cached_prices = cached_today + cached_tomorrow %}
+          {% set source_valid_until = as_datetime(source_prices[-1].startsAt) + timedelta(minutes=15) if source_prices | length > 0 else none %}
+          {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
+          {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
+          {% set use_source = source_state not in ['unknown', 'unavailable', 'none', 'None'] and source_prices | length > 0 and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
+          {% if use_source %}
+            {{ source_tomorrow }}
+          {% else %}
+            {{ this.attributes.get('tomorrow', []) if this is defined else [] }}
+          {% endif %}
+        last_successful_update: >
+          {% set source_state = states('sensor.tibber_energy_prices') %}
+          {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
+          {% set source_tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') or [] %}
+          {% set source_prices = source_today + source_tomorrow %}
+          {% set cached_today = this.attributes.get('today', []) if this is defined else [] %}
+          {% set cached_tomorrow = this.attributes.get('tomorrow', []) if this is defined else [] %}
+          {% set cached_prices = cached_today + cached_tomorrow %}
+          {% set source_valid_until = as_datetime(source_prices[-1].startsAt) + timedelta(minutes=15) if source_prices | length > 0 else none %}
+          {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
+          {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
+          {% set use_source = source_state not in ['unknown', 'unavailable', 'none', 'None'] and source_prices | length > 0 and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
+          {% if use_source %}
+            {{ now().isoformat() }}
+          {% else %}
+            {{ this.attributes.get('last_successful_update', 'unknown') if this is defined else 'unknown' }}
+          {% endif %}
+        valid_until: >
+          {% set source_state = states('sensor.tibber_energy_prices') %}
+          {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
+          {% set source_tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') or [] %}
+          {% set source_prices = source_today + source_tomorrow %}
+          {% set source_valid = source_state not in ['unknown', 'unavailable', 'none', 'None'] and source_prices | length > 0 %}
+          {% set cached_today = this.attributes.get('today', []) if this is defined else [] %}
+          {% set cached_tomorrow = this.attributes.get('tomorrow', []) if this is defined else [] %}
+          {% set cached_prices = cached_today + cached_tomorrow %}
+          {% set source_valid_until = as_datetime(source_prices[-1].startsAt) + timedelta(minutes=15) if source_prices | length > 0 else none %}
+          {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
+          {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
+          {% set use_source = source_valid and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
+          {% set prices = source_prices if use_source else cached_prices %}
+          {% if prices | length > 0 %}
+            {{ (as_datetime(prices[-1].startsAt) + timedelta(minutes=15)).isoformat() }}
+          {% else %}
+            unknown
+          {% endif %}
+        hours_remaining: >
+          {% set source_state = states('sensor.tibber_energy_prices') %}
+          {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
+          {% set source_tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') or [] %}
+          {% set source_prices = source_today + source_tomorrow %}
+          {% set source_valid = source_state not in ['unknown', 'unavailable', 'none', 'None'] and source_prices | length > 0 %}
+          {% set cached_today = this.attributes.get('today', []) if this is defined else [] %}
+          {% set cached_tomorrow = this.attributes.get('tomorrow', []) if this is defined else [] %}
+          {% set cached_prices = cached_today + cached_tomorrow %}
+          {% set source_valid_until = as_datetime(source_prices[-1].startsAt) + timedelta(minutes=15) if source_prices | length > 0 else none %}
+          {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
+          {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
+          {% set use_source = source_valid and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
+          {% set prices = source_prices if use_source else cached_prices %}
+          {% if prices | length > 0 %}
+            {% set valid_until = as_datetime(prices[-1].startsAt) + timedelta(minutes=15) %}
+            {{ [((valid_until - now()).total_seconds() / 3600) | round(2), 0] | max }}
+          {% else %}
+            0
+          {% endif %}
+        cache_status: >
+          {% set source_state = states('sensor.tibber_energy_prices') %}
+          {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
+          {% set source_tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') or [] %}
+          {% set source_prices = source_today + source_tomorrow %}
+          {% set cached_today = this.attributes.get('today', []) if this is defined else [] %}
+          {% set cached_tomorrow = this.attributes.get('tomorrow', []) if this is defined else [] %}
+          {% set cached_prices = cached_today + cached_tomorrow %}
+          {% set source_valid = source_state not in ['unknown', 'unavailable', 'none', 'None'] and source_prices | length > 0 %}
+          {% set source_valid_until = as_datetime(source_prices[-1].startsAt) + timedelta(minutes=15) if source_prices | length > 0 else none %}
+          {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
+          {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
+          {% set use_source = source_valid and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
+          {% if use_source %}
+            fresh
+          {% elif cached_prices | length > 0 and cached_hours > 0 %}
+            cached
+          {% else %}
+            expired
+          {% endif %}
+        refresh_needed: >
+          {{ (state_attr('sensor.tibber_cached_energy_prices', 'hours_remaining') | float(default=0)) <= 3 }}
+
+- binary_sensor:
+    - name: "Tibber Cached Price Data Valid"
+      unique_id: tibber_cached_price_data_valid
+      icon: mdi:database-check
+      state: >
+        {{ states('sensor.tibber_cached_energy_prices') not in ['unknown', 'unavailable', 'none', 'None']
+           and (state_attr('sensor.tibber_cached_energy_prices', 'hours_remaining') | float(default=0)) > 0 }}
+
 - sensor:
     - name: "Tibber Energy Lowest Price Next 24 Hours"
       unique_id: tibber_energy_lowest_price_next_24_hours
@@ -1114,9 +1282,9 @@
       state: >
         {% set current_time = now() %}
         {% set end_time = current_time + timedelta(hours=24) %}
-        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
-        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
-        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+        {% set today_prices = state_attr('sensor.tibber_cached_energy_prices', 'today') or [] %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_cached_energy_prices', 'tomorrow') or [] %}
+        {% set combined_prices = today_prices + tomorrow_prices %}
 
         {% if combined_prices %}
           {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
@@ -1136,9 +1304,9 @@
       state: >
         {% set current_time = now() %}
         {% set end_time = current_time + timedelta(hours=12) %}
-        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
-        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
-        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+        {% set today_prices = state_attr('sensor.tibber_cached_energy_prices', 'today') or [] %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_cached_energy_prices', 'tomorrow') or [] %}
+        {% set combined_prices = today_prices + tomorrow_prices %}
 
         {% if combined_prices %}
           {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
@@ -1157,9 +1325,9 @@
       icon: mdi:currency-eur
       state: >
         {% set current_time = now() %}
-        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
-        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
-        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+        {% set today_prices = state_attr('sensor.tibber_cached_energy_prices', 'today') or [] %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_cached_energy_prices', 'tomorrow') or [] %}
+        {% set combined_prices = today_prices + tomorrow_prices %}
 
         {% if combined_prices %}
           {% set next_interval_prices = combined_prices | selectattr('startsAt', '>', current_time.isoformat()) | list %}
@@ -1179,9 +1347,9 @@
       state: >
         {% set current_time = now() %}
         {% set end_time = current_time + timedelta(hours=24) %}
-        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
-        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
-        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+        {% set today_prices = state_attr('sensor.tibber_cached_energy_prices', 'today') or [] %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_cached_energy_prices', 'tomorrow') or [] %}
+        {% set combined_prices = today_prices + tomorrow_prices %}
 
         {% if combined_prices %}
           {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
@@ -1201,9 +1369,9 @@
       state: >
         {% set current_time = now() %}
         {% set end_time = current_time + timedelta(hours=12) %}
-        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
-        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
-        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+        {% set today_prices = state_attr('sensor.tibber_cached_energy_prices', 'today') or [] %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_cached_energy_prices', 'tomorrow') or [] %}
+        {% set combined_prices = today_prices + tomorrow_prices %}
 
         {% if combined_prices %}
           {% set future_prices = combined_prices | selectattr('startsAt', '>=', current_time.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | list %}
@@ -1223,12 +1391,13 @@
       state: >
         {% set current_time = now() %}
         {% set end_time = current_time + timedelta(hours=12) %}
-        {% set current_price = states('sensor.tibber_energy_prices') | float(default=0) %}
-        {% set today_prices = state_attr('sensor.tibber_energy_prices', 'today') %}
-        {% set tomorrow_prices = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
-        {% set combined_prices = (today_prices + tomorrow_prices) if today_prices and tomorrow_prices else today_prices %}
+        {% set current_price_state = states('sensor.tibber_cached_energy_prices') %}
+        {% set current_price = current_price_state | float(default=0) %}
+        {% set today_prices = state_attr('sensor.tibber_cached_energy_prices', 'today') or [] %}
+        {% set tomorrow_prices = state_attr('sensor.tibber_cached_energy_prices', 'tomorrow') or [] %}
+        {% set combined_prices = today_prices + tomorrow_prices %}
 
-        {% if combined_prices and current_price != 'unknown' %}
+        {% if combined_prices and current_price_state not in ['unknown', 'unavailable', 'none', 'None'] %}
           {# Include current interval by looking back 15 minutes #}
           {% set window_start = current_time - timedelta(minutes=15) %}
           {% set window_prices = combined_prices | selectattr('startsAt', '>=', window_start.isoformat()) | selectattr('startsAt', '<=', end_time.isoformat()) | map(attribute='total') | list %}
@@ -1251,7 +1420,7 @@
       icon: mdi:cash-minus
       state: >
         {% set lowest_price_24_hours = states('sensor.tibber_energy_lowest_price_next_24_hours') | float(default=999) %}
-        {% set current_price = (states('sensor.tibber_energy_prices') | float(default=999)) * 100 %}
+        {% set current_price = (states('sensor.tibber_cached_energy_prices') | float(default=999)) * 100 %}
         {% set price_tolerance = 3 %}
         {% if lowest_price_24_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
           true
@@ -1263,7 +1432,7 @@
       unique_id: price_is_lower_than_next_hour
       icon: mdi:arrow-down-bold
       state: >
-        {% if states('sensor.tibber_energy_price_next_hour') | float(default=999) > (((states('sensor.tibber_energy_prices') | float(default=999))*100)) %}
+        {% if states('sensor.tibber_energy_price_next_hour') | float(default=999) > (((states('sensor.tibber_cached_energy_prices') | float(default=999))*100)) %}
           true
         {% else %}
           false
@@ -1274,7 +1443,7 @@
       icon: mdi:cash-minus
       state: >
         {% set lowest_price_12_hours = states('sensor.tibber_energy_lowest_price_next_12_hours') | float(default=999) %}
-        {% set current_price = (states('sensor.tibber_energy_prices') | float(default=999)) * 100 %}
+        {% set current_price = (states('sensor.tibber_cached_energy_prices') | float(default=999)) * 100 %}
         {% set price_tolerance = 3 %}
         {% if lowest_price_12_hours > (current_price - price_tolerance) and is_state('binary_sensor.price_is_lower_than_next_hour', 'on') %}
           true
