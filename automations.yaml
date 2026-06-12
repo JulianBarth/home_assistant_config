@@ -306,6 +306,45 @@
         message: "Battery SoC is below 7.5%!"
         title: "Battery Alert"
 
+- alias: "Notify when Inverter Data is Invalid"
+  description: "Alerts on Modbus/Fronius outages (SoC register unavailable or 0)"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.inverter_data_valid
+      to: "off"
+      for:
+        minutes: 10
+  action:
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        message: "Inverter data has been invalid for 10 minutes (Modbus/Fronius outage?). Battery automation decisions are paused."
+        title: "Inverter Alert"
+
+- alias: "Notify when Price Data is Invalid"
+  description: "Alerts when Tibber price data is stale and the cache has expired"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.tibber_cached_price_data_valid
+      to: "off"
+      for:
+        hours: 1
+  action:
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        message: "Tibber price data has been invalid for 1 hour. Battery is running on the default target."
+        title: "Price Data Alert"
+
+- alias: "Rotate Battery Algorithm Log"
+  description: "Keeps battery_algorithm.log at most ~20000 lines (monthly)"
+  trigger:
+    - platform: time
+      at: "03:00:00"
+  condition:
+    - condition: template
+      value_template: "{{ now().day == 1 }}"
+  action:
+    - service: shell_command.rotate_battery_log
+
 - alias: "Notify when Tibber Pulse is not functioning"
   trigger:
     - platform: state

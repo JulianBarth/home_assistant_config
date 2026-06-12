@@ -103,20 +103,24 @@
       scan_interval: 30  # status register, doesn't change rapidly
       unit_of_measurement: W
       unique_id: 0986479e-d88d-4722-b70c-8f0f8b84bfd2
-    # OutWRte - Register 40365 (discharge rate, 0.01% increments)
+    # OutWRte - Register 40365 (discharge rate, 0.01% increments → scale to %)
     - name: percent_max_discharge_rte
       slave: 1
       data_type: int16
       address: 40365
       scan_interval: 30  # control register, only changes when we write to it
+      scale: 0.01
+      precision: 2
       unit_of_measurement: "%"
       unique_id: 9af951af-ad20-410b-8e3f-29c9e21702c3
-    # InWRte - Register 40366 (charge rate, 0.01% increments)
+    # InWRte - Register 40366 (charge rate, 0.01% increments → scale to %)
     - name: percent_max_charge_rte
       slave: 1
       data_type: int16
       address: 40366
       scan_interval: 30  # control register, only changes when we write to it
+      scale: 0.01
+      precision: 2
       unit_of_measurement: "%"
       unique_id: 8c5c170b-d0a5-442a-a217-67e8eb5727ea
     - name: nameplate_id

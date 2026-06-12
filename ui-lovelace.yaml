@@ -533,20 +533,14 @@ views:
             name: SoC Hysteresis
           - entity: input_number.battery_hold_threshold
             name: Hold Threshold
-          - entity: input_number.battery_discharge_buffer
-            name: Discharge Buffer
           - type: divider
           - type: section
             label: Price Controls
-          - entity: input_number.max_charge_price_cents
-            name: Max Charging Price
           - entity: input_number.battery_wear_cost_per_kwh
             name: Battery Wear Cost
           - type: divider
           - type: section
             label: Consumption Model
-          - entity: input_number.daily_consumption_wh
-            name: Daily Consumption
           - entity: input_number.night_consumption_rate_wh
             name: Night Rate
           - entity: input_number.day_consumption_rate_wh
@@ -577,10 +571,6 @@ views:
             name: Low Sun Threshold
           - entity: input_number.sun_threshold_very_low
             name: Very Low Sun Threshold
-          - entity: input_number.soc_target_low_sun
-            name: Target (Low Sun)
-          - entity: input_number.soc_target_very_low_sun
-            name: Target (Very Low Sun)
 
       - type: entities
         title: "🔧 Manual Control Scripts"
@@ -760,7 +750,6 @@ views:
           - entity: input_boolean.battery_no_discharging_active
           - entity: input_boolean.battery_automation_on
           - entity: input_boolean.manual_battery_charge
-          - entity: input_boolean.manual_charging_on
 
       # --- ADVANCED MODBUS ---
       - type: entities
@@ -851,9 +840,6 @@ views:
             secondary_info: last-changed
           - entity: input_boolean.manual_battery_charge
             name: "manual_battery_charge"
-            secondary_info: last-changed
-          - entity: input_boolean.manual_charging_on
-            name: "manual_charging_on"
             secondary_info: last-changed
           - type: divider
           - type: section
@@ -960,7 +946,7 @@ views:
         title: "☀️ Solar Forecast Debug"
         content: |
           **Remaining Today:** {{ (states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000) | round(0) }} Wh
-          **Forecast Next Hours:** {{ (states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=0) * 1000) | round(0) }} Wh
+          **Forecast Next Hours:** {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=0) | round(0) }} Wh
           **Low Solar Threshold:** {{ states('input_number.low_solar_threshold_wh') }} Wh
 
           **Flags:**
@@ -1040,11 +1026,9 @@ views:
           |-----------|-------|-----------|-------|
           | battery_capacity | {{ states('input_number.battery_capacity_wh') }} Wh | soc_target_default | {{ states('input_number.soc_target_default') }}% |
           | soc_hist | {{ states('input_number.soc_hist') }}% | hold_threshold | {{ states('input_number.battery_hold_threshold') }}% |
-          | discharge_buffer | {{ states('input_number.battery_discharge_buffer') }}% | max_charge_price | {{ states('input_number.max_charge_price_cents') }} ct |
           | wear_cost | {{ states('input_number.battery_wear_cost_per_kwh') }} ct | low_solar_thresh | {{ states('input_number.low_solar_threshold_wh') }} Wh |
           | night_rate | {{ states('input_number.night_consumption_rate_wh') }} Wh/h | day_rate | {{ states('input_number.day_consumption_rate_wh') }} Wh/h |
           | weekday_wake | {{ states('input_number.weekday_wake_hour') }} | weekend_wake | {{ states('input_number.weekend_wake_hour') }} |
-          | sleep_hour | {{ states('input_number.sleep_hour') }} | daily_consumption | {{ states('input_number.daily_consumption_wh') }} Wh |
+          | sleep_hour | {{ states('input_number.sleep_hour') }} | car_hysteresis | {{ states('input_number.car_charging_hysteresis_minutes') }} min |
           | charge_rate_max | {{ states('input_number.battery_charge_rate_max') }} | grid_capacity | {{ states('input_number.grid_connection_capacity') }} |
-          | car_hysteresis | {{ states('input_number.car_charging_hysteresis_minutes') }} min | | |
 

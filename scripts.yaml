@@ -391,15 +391,17 @@ stop_limit_discharging:
 
 charge_battery_limit_discharge:
   alias: "Charge Battery with Limited Discharge"
-  description: "Charge battery while limiting discharge for car charging"
+  description: "Force battery charging from grid while the car charges"
   sequence:
-    # Set charge rate to 100%, discharge to 10%
+    # OutWRte must be NEGATIVE to force charging. A positive value (old: 1000)
+    # only allowed discharge — on 2026-04-26 the battery drained 73%→66% during
+    # negative prices in this mode instead of charging.
     - service: modbus.write_register
       data:
         hub: fronius1
         unit: 1
         address: 40365
-        value: 1000  # 10% discharge limit
+        value: 57536  # 65536 - 8000 = forced charge at 80% (same as forced_full_recharge)
     - service: modbus.write_register
       data:
         hub: fronius1

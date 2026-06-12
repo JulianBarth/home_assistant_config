@@ -27,6 +27,8 @@ lovelace:
       show_in_sidebar: true
 
 # Helper
+# NOTE: no `initial:` on helpers — HA would reset them to that value on every
+# restart, silently wiping UI-tuned parameters. Values now persist via restore.
 input_boolean:
   battery_charging_active:
     name: Battery Charging Active
@@ -37,25 +39,18 @@ input_boolean:
   battery_automation_on:
     name: Battery Charge Automation is On
     icon: mdi:state-machine
-    initial: true
-  manual_charging_on:
-    name: Manual Charging On
-    icon: mdi:battery-charging
   manual_battery_charge:
     name: Manual Battery Charge
-    initial: false
 
 input_number:
   battery_target_soc:
     name: Battery Target SoC
-    initial: 100
     min: 0
     max: 100
     step: 1
     unit_of_measurement: "%"
   manual_charge_target_soc:
     name: Manual Charge Target SoC
-    initial: 80
     min: 0
     max: 100
     step: 1
@@ -63,7 +58,6 @@ input_number:
 
   sun_threshold_low:
     name: Expected Sun Low Threshold
-    initial: 15000
     min: 0
     max: 50000
     step: 1000
@@ -71,31 +65,13 @@ input_number:
 
   sun_threshold_very_low:
     name: Expected Sun Very Low Threshold
-    initial: 8000
     min: 0
     max: 50000
     step: 1000
     unit_of_measurement: "Wh"
 
-  soc_target_very_low_sun:
-    name: Target SoC for Very Low Sun
-    initial: 90
-    min: 0
-    max: 100
-    step: 1
-    unit_of_measurement: "%"
-
-  soc_target_low_sun:
-    name: Target SoC for Low Sun
-    initial: 50
-    min: 0
-    max: 100
-    step: 1
-    unit_of_measurement: "%"
-
   soc_target_default:
     name: Default Target SoC
-    initial: 15
     min: 0
     max: 100
     step: 1
@@ -106,13 +82,11 @@ input_number:
     step: 0.5
     min: 0
     max: 25
-    initial: 5
     icon: mdi:thermometer
 
   # Grid capacity setting
   grid_connection_capacity:
     name: Grid Connection Capacity
-    initial: 40000
     min: 5000
     max: 50000
     step: 1000
@@ -122,7 +96,6 @@ input_number:
   # Battery parameters
   battery_charge_rate_max:
     name: Maximum Battery Charge Rate
-    initial: 10000
     min: 1000
     max: 10000
     step: 500
@@ -132,7 +105,6 @@ input_number:
   # Economic parameters
   battery_wear_cost_per_kwh:
     name: Battery Wear Cost
-    initial: 2
     min: 0
     max: 10
     step: 0.5
@@ -142,25 +114,14 @@ input_number:
   # Hysteresis parameters
   battery_hold_threshold:
     name: Battery Hold Threshold
-    initial: 3
     min: 1
     max: 10
     step: 0.5
     unit_of_measurement: "%"
     icon: mdi:arrow-split-horizontal
 
-  battery_discharge_buffer:
-    name: Battery Discharge Buffer
-    initial: 5
-    min: 0
-    max: 20
-    step: 1
-    unit_of_measurement: "%"
-    icon: mdi:buffer
-
   car_charging_hysteresis_minutes:
     name: Car Charging State Hysteresis
-    initial: 3
     min: 0
     max: 15
     step: 1
@@ -170,26 +131,14 @@ input_number:
   # Battery capacity for solar-to-SoC calculations
   battery_capacity_wh:
     name: Battery Capacity
-    initial: 10000
     min: 1000
     max: 50000
     step: 100
     unit_of_measurement: "Wh"
     icon: mdi:battery-high
 
-  # Smart charging algorithm parameters
-  daily_consumption_wh:
-    name: Daily Consumption (All Day)
-    initial: 14000
-    min: 1000
-    max: 50000
-    step: 100
-    unit_of_measurement: "Wh"
-    icon: mdi:home-lightning-bolt
-
   night_consumption_rate_wh:
     name: Night Consumption Rate (22:00-wake)
-    initial: 280
     min: 50
     max: 600
     step: 10
@@ -198,7 +147,6 @@ input_number:
 
   day_consumption_rate_wh:
     name: Day Consumption Rate (wake-22:00)
-    initial: 850
     min: 200
     max: 2000
     step: 10
@@ -207,7 +155,6 @@ input_number:
 
   weekday_wake_hour:
     name: Weekday Wake Hour
-    initial: 5.5
     min: 0
     max: 12
     step: 0.5
@@ -216,7 +163,6 @@ input_number:
 
   weekend_wake_hour:
     name: Weekend Wake Hour
-    initial: 7.5
     min: 0
     max: 12
     step: 0.5
@@ -225,27 +171,15 @@ input_number:
 
   sleep_hour:
     name: Sleep Hour (High→Low Consumption)
-    initial: 22
     min: 18
     max: 24
     step: 0.5
     unit_of_measurement: "h"
     icon: mdi:power-sleep
 
-  # Price ceiling for charging decisions
-  max_charge_price_cents:
-    name: Maximum Charging Price
-    initial: 25
-    min: 0
-    max: 50
-    step: 1
-    unit_of_measurement: "Cent/kWh"
-    icon: mdi:currency-eur
-
   # Low solar threshold for winter mode detection
   low_solar_threshold_wh:
     name: Low Solar Forecast Threshold
-    initial: 3000
     min: 500
     max: 10000
     step: 500
@@ -264,7 +198,8 @@ sensor:
       - today
       - tomorrow
     value_template: "{{ value_json.data.viewer.homes[0].currentSubscription.priceInfo.current.total | float }}"
-    scan_interval: 30
+    # Prices change every 15 min — 5 min polling is plenty (was 30s = 2880 calls/day)
+    scan_interval: 300
     headers:
       Authorization: !secret tibber_api_key
       Content-Type: application/json
@@ -307,6 +242,10 @@ command_line:
   - notify:
       name: battery_log
       command: "sh -c 'cat >> /config/battery_algorithm.log; echo >> /config/battery_algorithm.log'"
+
+# Keep the algorithm log bounded (called monthly by automation)
+shell_command:
+  rotate_battery_log: "sh -c 'tail -n 20000 /config/battery_algorithm.log > /config/battery_algorithm.log.tmp && mv /config/battery_algorithm.log.tmp /config/battery_algorithm.log'"
 
 automation: !include automations.yaml
 script: !include scripts.yaml

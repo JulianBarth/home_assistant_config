@@ -39,7 +39,20 @@
       unique_id: expected_sun_very_low
       device_class: power
       state: >
-        {{ (states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=50) * 1000) <= states('input_number.sun_threshold_very_low') | float(default=8000) }}
+        {# Forecast Next X Hours is already in Wh — no kWh conversion #}
+        {{ (states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=50000)) <= states('input_number.sun_threshold_very_low') | float(default=8000) }}
+
+# Inverter/Modbus data validity — SoC register reading 0 or unavailable means the
+# Fronius connection is down (e.g. the ~21h outage on 2026-04-27). Decision sensors
+# gate on this instead of acting on a phantom SoC of 0.
+- binary_sensor:
+    - name: "Inverter Data Valid"
+      unique_id: inverter_data_valid
+      device_class: connectivity
+      icon: mdi:database-check
+      state: >
+        {% set soc = states('sensor.reading_energy_battery_soc_scaled') %}
+        {{ soc not in ['unavailable', 'unknown', 'none', 'None'] and soc | float(default=0) > 0 }}
 
 # Binary sensor for charging conditions
 - binary_sensor:
@@ -57,7 +70,8 @@
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
         {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
         {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
-        {% set hysteresis_buffer = states('input_number.soc_hist') | float(default=5) * 50 %}
+        {# Scaled SoC units are % * 100 #}
+        {% set hysteresis_buffer = states('input_number.soc_hist') | float(default=5) * 100 %}
 
         {# Only charge when algorithm actively wants to — computed_target must exceed #}
         {# the Fronius minimum. When computed_target = default, no charging is needed #}
@@ -85,16 +99,20 @@
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
         {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
 
-        {# Hysteresis: multiply by 50 to convert % to scaled SoC units #}
-        {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
+        {# Hysteresis: multiply by 100 to convert % to scaled SoC units #}
+        {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 100 %}
+
+        {# Fail-safe: stop charging when inverter data goes invalid (Modbus outage) #}
+        {% set inverter_data_invalid = is_state('binary_sensor.inverter_data_valid', 'off') %}
 
         {# Stop charging when: #}
         {# 1. Battery reaches the original target plus hysteresis OR #}
-        {# 2. Battery exceeds the current computed target (respond immediately when prices increase) #}
+        {# 2. Battery exceeds the current computed target (respond immediately when prices increase) OR #}
+        {# 3. Inverter data is invalid — don't keep force-charging blind #}
         {% set reached_target = current_soc >= (target_soc + hysteresis) %}
         {% set exceeds_computed_target = price_data_valid and current_soc >= computed_target_soc %}
 
-        {{ (reached_target or exceeds_computed_target) and charging_active }}
+        {{ (reached_target or exceeds_computed_target or inverter_data_invalid) and charging_active }}
 
     - name: "Should Hold Battery SOC"
       unique_id: should_hold_battery_soc
@@ -125,9 +143,11 @@
         {% set automation_on = is_state('input_boolean.battery_automation_on', 'on') %}
         {% set charging_inactive = is_state('input_boolean.battery_charging_active', 'off') %}
         {% set current_state = is_state('binary_sensor.should_prevent_discharge', 'on') %}
-        {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 50 %}
+        {# Scaled SoC units are % * 100 #}
+        {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 100 %}
+        {% set data_valid = is_state('binary_sensor.inverter_data_valid', 'on') %}
 
-        {% if not automation_on or not charging_inactive %}
+        {% if not automation_on or not charging_inactive or not data_valid %}
           {{ false }}
         {% elif current_state %}
           {# Stay ON until we exceed the target + hysteresis #}
@@ -150,10 +170,10 @@
         {% if not (is_charging and wallbox_not_eco) %}
           {{ false }}
         {% else %}
-          {# Check if state has been stable for 60 seconds #}
+          {# Require the charging state to be stable for the configured hysteresis time #}
           {% set last_changed = as_timestamp(states.sensor.wattpilot_carconnected.last_changed) %}
           {% set now_ts = as_timestamp(now()) %}
-          {% set stable_seconds = 60 %}
+          {% set stable_seconds = states('input_number.car_charging_hysteresis_minutes') | float(default=1) * 60 %}
           {{ (now_ts - last_changed) >= stable_seconds }}
         {% endif %}
 
@@ -249,8 +269,7 @@
         {% else %}
           {% set expected_solar_wh = remaining_today_wh %}
         {% endif %}
-        {% set current_soc = states('sensor.batterie_soc') | float(default=15) %}
-        
+
         {# === SMART WINTER MODE (solar-forecast based, time-aware) === #}
         {# Only apply low-solar logic before solar noon (13:00). #}
         {# After noon, remaining solar naturally drops on ANY sunny day — #}
@@ -295,10 +314,11 @@
         {% endif %}
 
         
-        {# === FIX: Account for energy already stored in battery === #}
-        {# The battery already holds energy above the minimum — this reduces the true deficit #}
-        {% set current_stored_wh = [(current_soc - default_target) / 100 * battery_capacity, 0] | max %}
-        {% set energy_deficit_wh = [bridge_consumption_wh - usable_solar - current_stored_wh, 0] | max %}
+        {# Deficit = bridge consumption not covered by solar. Do NOT subtract energy #}
+        {# already stored: the target is an absolute SoC and should_start/should_stop #}
+        {# compare it against the current SoC. Subtracting stored energy made the #}
+        {# target fall while charging, stopping every session halfway to the target. #}
+        {% set energy_deficit_wh = [bridge_consumption_wh - usable_solar, 0] | max %}
         {# Cap deficit at battery capacity — can't charge more than 100% #}
         {% set energy_deficit_wh = [energy_deficit_wh, battery_capacity] | min %}
         
@@ -425,8 +445,9 @@
             {% set headroom_solar = usable_solar %}
           {% endif %}
           
+          {# current_stored_wh kept for logging only — no longer subtracted from the deficit #}
           {% set current_stored_wh = [(current_soc - default_target) / 100 * battery_capacity, 0] | max %}
-          {% set deficit = [bridge_consumption - usable_solar - current_stored_wh, 0] | max %}
+          {% set deficit = [bridge_consumption - usable_solar, 0] | max %}
           {% set deficit = [deficit, battery_capacity] | min %}
           {% set solar_soc_equivalent = (headroom_solar / battery_capacity * 100) | round(0) %}
           {% set max_grid_target = [100 - solar_soc_equivalent, default_target] | max %}
@@ -746,11 +767,13 @@
       device_class: power
       state_class: measurement
       state: >
+        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
         {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
         {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
-        
-        {# House consumption = Total AC output - Wallbox consumption #}
-        {% set house_consumption = ac_output - wallbox_power %}
+
+        {# House consumption = grid import + inverter AC output - wallbox #}
+        {# The wallbox is grid-fed, so ac_output alone goes negative while the car charges #}
+        {% set house_consumption = [grid_power, 0] | max + ac_output - wallbox_power %}
         {{ [house_consumption, 0] | max | round(0) }}
 
     - name: "Solar To Battery"
@@ -781,9 +804,11 @@
         {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
         {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
         {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
-        
-        {# Calculate house consumption to avoid circular dependency #}
-        {% set house_consumption = [ac_output - wallbox_power, 0] | max %}
+        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
+
+        {# Calculate house consumption inline to avoid circular dependency #}
+        {# Same formula as sensor.house_consumption: grid import + AC output - wallbox #}
+        {% set house_consumption = [[grid_power, 0] | max + ac_output - wallbox_power, 0] | max %}
         
         {% if charging_state in ['DISCHARGING', 'HOLDING', 'OFF'] %}
           {# Solar goes to house consumption - take minimum of both #}
