@@ -115,7 +115,7 @@ views:
           | Bridge Consumption | {{ data.bridge_consumption_wh }} Wh |
           | Solar (usable) | {{ data.usable_solar_wh }} Wh |
           | Energy Deficit | {{ data.energy_deficit_wh }} Wh |
-          | Price Percentile | {{ data.price_percentile }}% |
+          | Price Percentile | {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}% |
           | Price Drop | {{ data.price_drop_cents }} ct |
           {% endif %}
 
