@@ -478,20 +478,25 @@
           
           {
             "current_hour": {{ current_hour | round(1) }},
+            "wake_hour": {{ wake_hour }},
+            "is_weekend": {{ is_weekend }},
             "sunrise_hour": {{ sunrise_hour | round(2) }},
             "solar_start": {{ solar_start_hour | round(2) }},
             "bridge_hours": {{ bridge_hours | round(1) }},
             "bridge_type": "{{ bridge_type }}",
             "bridge_consumption_wh": {{ bridge_consumption | round(0) }},
             "expected_solar_wh": {{ expected_solar_wh | round(0) }},
+            "effective_solar_wh": {{ effective_solar | round(0) }},
             "usable_solar_wh": {{ usable_solar | round(0) }},
             "is_low_solar_day": {{ is_low_solar_day }},
             "current_stored_wh": {{ current_stored_wh | round(0) }},
             "energy_deficit_wh": {{ deficit | round(0) }},
             "max_grid_target": {{ max_grid_target | round(0) }},
             "decision_reason": "{{ reason }}",
+            "current_price_cents": {{ current_price_cents | round(2) }},
             "next_price_cents": {{ next_price_cents | round(2) }},
-            "price_drop_cents": {{ price_drop | round(2) }}
+            "price_drop_cents": {{ price_drop | round(2) }},
+            "price_percentile": {{ percentile | round(0) }}
           }
 
     - name: "Computed Target SoC"

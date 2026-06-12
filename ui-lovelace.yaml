@@ -369,11 +369,11 @@ views:
           ### Price Analysis
           | Parameter | Value |
           |-----------|-------|
-          | Current Price | {{ data.current_price_cents }} ct/kWh |
+          | Current Price | {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(2) }} ct/kWh |
           | Next Price | {{ data.next_price_cents }} ct/kWh |
           | Price Drop | {{ data.price_drop_cents }} ct |
-          | Percentile | {{ data.price_percentile }}% |
-          | Max Allowed | {{ data.max_price_cents }} ct/kWh |
+          | Percentile | {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}% |
+          | Max Grid Target | {{ data.max_grid_target }}% |
           {% else %}
           *Waiting for data...*
           {% endif %}
@@ -810,7 +810,7 @@ views:
           | usable_solar | {{ data.usable_solar_wh }} Wh | is_low_solar | {{ data.is_low_solar_day }} |
           | current_price | {{ data.current_price_cents }} ct | next_price | {{ data.next_price_cents }} ct |
           | price_drop | {{ data.price_drop_cents }} ct | percentile | {{ data.price_percentile }}% |
-          | max_price | {{ data.max_price_cents }} ct | current_hour | {{ data.current_hour }} |
+          | max_grid_target | {{ data.max_grid_target }}% | current_hour | {{ data.current_hour }} |
           | is_weekend | {{ data.is_weekend }} | wake_hour | {{ data.wake_hour }} |
 
           **computed_target_soc:** {{ states('sensor.computed_target_soc') }}%
