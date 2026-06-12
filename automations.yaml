@@ -12,8 +12,15 @@
     # Just set the flag - let unified coordinator handle the rest
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
-        message: "Manual battery charging requested. System will override automation."
-        title: "Battery Control"
+        title: "🔋 Manual Charging Requested"
+        message: >-
+          Charging to {{ states('input_number.manual_charge_target_soc') | float(80) | round(0) }}%
+          (now {{ states('sensor.batterie_soc') }}%) at
+          {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(1) }} ct/kWh.
+          Automation is overridden until the target is reached.
+        data:
+          tag: battery_charging
+          group: battery
 
 - alias: "Unified Battery Control Coordinator"
   description: "Single automation to coordinate all battery control modes"
@@ -275,6 +282,12 @@
       data: {}
   mode: single
 
+# =============================================================================
+# SMARTPHONE NOTIFICATIONS
+# Conventions: every alert has a `tag` (updates replace instead of stack) and
+# `group: battery` (collapsed into one thread). Resolvable alerts send
+# `clear_notification` with the same tag when the condition clears.
+# =============================================================================
 - alias: "Notify when Battery Charging is Active"
   trigger:
     - platform: state
@@ -283,28 +296,160 @@
   action:
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
-        message: "Battery Charging is now Active."
-        title: "Battery Alert"
+        title: "🔋 Battery Charging Started"
+        message: >-
+          {{ states('sensor.batterie_soc') }}% → {{ states('input_number.battery_target_soc') | float(15) | round(0) }}%
+          at {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(1) }} ct/kWh
+          (percentile {{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(0) | round(0) }}%).
+          Reason: {{ state_attr('sensor.battery_optimization_data', 'calculation_data').decision_reason
+                     if state_attr('sensor.battery_optimization_data', 'calculation_data') else 'n/a' }}
+        data:
+          tag: battery_charging
+          group: battery
+          actions:
+            - action: "BATTERY_STOP_CHARGING"
+              title: "Stop & pause automation"
+
+- alias: "Notify when Battery Charging Finished"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.battery_charging_active
+      from: "on"
+      to: "off"
+  action:
+    # Same tag — replaces the "charging started" notification
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        title: "🔋 Battery Charging Finished"
+        message: >-
+          Stopped at {{ states('sensor.batterie_soc') }}%.
+          Current price {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(1) }} ct/kWh.
+        data:
+          tag: battery_charging
+          group: battery
+
 - alias: "Notify when No Battery Discharging is Active"
   trigger:
+    # Debounce: short flaps (car-charging detection settling) don't notify
     - platform: state
       entity_id: input_boolean.battery_no_discharging_active
       to: "on"
+      for:
+        minutes: 2
   action:
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
-        message: "Battery Discharging is Disabled."
-        title: "Battery Alert"
+        title: "🔒 Battery Discharge Limited"
+        message: >-
+          {{ states('sensor.battery_control_status') }} —
+          SoC {{ states('sensor.batterie_soc') }}%,
+          discharge limit {{ states('sensor.discharge_limit_percentage') | float(100) | round(0) }}%
+          {%- if is_state('binary_sensor.car_charging_stable', 'on') %},
+          wallbox {{ states('sensor.wattpilot_charging_power') | float(0) | round(0) }} W{% endif %}.
+        data:
+          tag: battery_discharge_limit
+          group: battery
+
+- alias: "Clear Discharge Limit Notification"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.battery_no_discharging_active
+      from: "on"
+      to: "off"
+      for:
+        minutes: 2
+  action:
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        message: clear_notification
+        data:
+          tag: battery_discharge_limit
+
 - alias: "Notify when Battery SoC is below 7.5%"
   trigger:
     - platform: numeric_state
       entity_id: sensor.reading_energy_battery_soc_scaled
-      below: 750  # Adjust if your SoC is scaled differently (e.g., 7.5% is 750)
+      below: 750  # scaled SoC: 750 = 7.5%
+      for:
+        minutes: 5
+  condition:
+    # Don't alarm on Modbus glitches reading SoC as 0/unavailable
+    - condition: state
+      entity_id: binary_sensor.inverter_data_valid
+      state: "on"
   action:
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
-        message: "Battery SoC is below 7.5%!"
-        title: "Battery Alert"
+        title: "🪫 Battery Critically Low"
+        message: >-
+          Battery SoC is {{ states('sensor.batterie_soc') }}% — below the 7.5% reserve.
+          Mode: {{ states('sensor.battery_control_mode') }},
+          state: {{ states('sensor.charging_state') }}.
+        data:
+          tag: battery_soc_low
+          group: battery
+          # Android: deliver immediately
+          ttl: 0
+          priority: high
+          # iOS: critical alert (breaks through silent mode)
+          push:
+            sound:
+              name: default
+              critical: 1
+              volume: 0.8
+
+- alias: "Handle Battery Notification Actions"
+  description: "Action buttons on battery notifications"
+  trigger:
+    - platform: event
+      event_type: mobile_app_notification_action
+      event_data:
+        action: BATTERY_STOP_CHARGING
+    - platform: event
+      event_type: mobile_app_notification_action
+      event_data:
+        action: BATTERY_RESUME_AUTOMATION
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.event.data.action == 'BATTERY_STOP_CHARGING' }}"
+          sequence:
+            # Pause automation FIRST so the coordinator can't restart the charge
+            - service: input_boolean.turn_off
+              target:
+                entity_id:
+                  - input_boolean.battery_automation_on
+                  - input_boolean.manual_battery_charge
+            - service: script.turn_on
+              target:
+                entity_id: script.stop_battery_charging
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                title: "⏸️ Charging Stopped, Automation Paused"
+                message: >-
+                  Battery automation is OFF until you resume it.
+                  SoC: {{ states('sensor.batterie_soc') }}%.
+                data:
+                  tag: battery_charging
+                  group: battery
+                  actions:
+                    - action: "BATTERY_RESUME_AUTOMATION"
+                      title: "Resume automation"
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.event.data.action == 'BATTERY_RESUME_AUTOMATION' }}"
+          sequence:
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.battery_automation_on
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                title: "▶️ Battery Automation Resumed"
+                message: "Normal price-optimized operation is active again."
+                data:
+                  tag: battery_charging
+                  group: battery
 
 - alias: "Notify when Inverter Data is Invalid"
   description: "Alerts on Modbus/Fronius outages (SoC register unavailable or 0)"
@@ -317,8 +462,34 @@
   action:
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
-        message: "Inverter data has been invalid for 10 minutes (Modbus/Fronius outage?). Battery automation decisions are paused."
-        title: "Inverter Alert"
+        title: "⚠️ Inverter Data Invalid"
+        message: >-
+          No valid Fronius/Modbus data for 10 minutes
+          (SoC register: {{ states('sensor.reading_energy_battery_soc_scaled') }}).
+          Battery automation decisions are paused until data returns.
+        data:
+          tag: inverter_outage
+          group: battery
+          ttl: 0
+          priority: high
+
+- alias: "Notify when Inverter Data is Restored"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.inverter_data_valid
+      from: "off"
+      to: "on"
+      for:
+        minutes: 2
+  action:
+    # Replace the outage alert with a short all-clear
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        title: "✅ Inverter Data Restored"
+        message: "Fronius data is valid again. SoC: {{ states('sensor.batterie_soc') }}%."
+        data:
+          tag: inverter_outage
+          group: battery
 
 - alias: "Notify when Price Data is Invalid"
   description: "Alerts when Tibber price data is stale and the cache has expired"
@@ -331,8 +502,30 @@
   action:
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
-        message: "Tibber price data has been invalid for 1 hour. Battery is running on the default target."
-        title: "Price Data Alert"
+        title: "⚠️ Price Data Invalid"
+        message: >-
+          Tibber price data has been invalid for 1 hour
+          (cache: {{ state_attr('sensor.tibber_cached_energy_prices', 'cache_status') }},
+          {{ state_attr('sensor.tibber_cached_energy_prices', 'hours_remaining') | float(0) | round(1) }} h remaining).
+          Battery runs on the default target.
+        data:
+          tag: price_data_outage
+          group: battery
+
+- alias: "Notify when Price Data is Restored"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.tibber_cached_price_data_valid
+      from: "off"
+      to: "on"
+      for:
+        minutes: 5
+  action:
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        message: clear_notification
+        data:
+          tag: price_data_outage
 
 - alias: "Rotate Battery Algorithm Log"
   description: "Keeps battery_algorithm.log at most ~20000 lines (monthly)"
@@ -355,5 +548,23 @@
   action:
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
-        message: "Tibber Pulse sensor is not functioning. Please check the sensor battery or connectivity."
-        title: "Tibber Pulse Alert"
+        title: "⚠️ Tibber Pulse Offline"
+        message: "Tibber Pulse is not reporting. Check the sensor's power or connectivity."
+        data:
+          tag: tibber_pulse_outage
+          group: battery
+
+- alias: "Clear Tibber Pulse Notification"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.tibber_pulse_not_functioning
+      from: "on"
+      to: "off"
+      for:
+        minutes: 5
+  action:
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        message: clear_notification
+        data:
+          tag: tibber_pulse_outage
