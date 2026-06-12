@@ -648,7 +648,7 @@
       icon: mdi:ev-station
       state: >
         {% set car_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
-        {% set home_power = states('sensor.home_consumption_power') | float(default=2000) %}
+        {% set home_power = states('sensor.house_consumption') | float(default=2000) %}
         {% set battery_charge_rate = states('input_number.battery_charge_rate_max') | float(default=5000) %}
         {% set grid_capacity = states('input_number.grid_connection_capacity') | float(default=20000) %}
         {% set current_price_cents = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
