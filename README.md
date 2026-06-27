@@ -10,6 +10,7 @@ This project aims to automate the charging and discharging behavior of a basemen
 - **Automate Charging for Low Energy Prices**: Charging is automated to occur during times when electricity prices are low.
 - **Efficient Battery Hold Mode**: Maintains target SOC using minimal charge/discharge rates instead of inefficient cycling, improving energy efficiency by 2-5%.
 - **Limit Discharging During Car Charging**: Prevent the battery from discharging when a car is being charged via the connected wallbox to maintain energy efficiency.
+- **Spend Clear Overnight Surplus Carefully**: If the battery is very likely to reach the next strong solar window with unused energy, allow a small, capped, price-aware discharge budget instead of preserving surplus that would only reduce PV headroom.
 - **Incorporate Solar Forecast**: The automation takes the expected solar generation into account to ensure the battery charges when solar production is anticipated to be lower.
 - **Tibber Pulse Monitoring**: Monitor the Tibber Pulse sensor health and receive notifications when the sensor is not functioning (e.g., low battery or connectivity issues).
 - **Balkonkraftwerk Integration**: Monitor the 800W balcony power plant (Deye Micro Inverter) for real-time power production and status.
@@ -145,7 +146,12 @@ For anyone wanting to expand or improve the project, start by focusing on:
   - Higher prices allow more discharge (up to 50% during very high prices)
   - Protects battery during car charging (default 10% limit)
   - See `script.set_dynamic_discharge_limit` for implementation
+- **Surplus Discharge Budget**: Strong-solar overnight optimization
+  - `sensor.battery_surplus_discharge_power` estimates battery energy that is unlikely to be needed before solar production resumes
+  - Current electricity price only changes aggressiveness after surplus has been proven
+  - Car-charging discharge remains capped by `input_number.battery_surplus_extra_discharge_cap_w`
+  - See `BATTERY_SURPLUS_DISCHARGE_POLICY.md` for the intent, guardrails, and tuning guidance
 
 Feel free to raise issues, suggest features, or contribute improvements.
 
-*Last Updated: December 2024*
+*Last Updated: June 2026*

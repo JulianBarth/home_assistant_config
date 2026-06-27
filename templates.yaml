@@ -665,6 +665,200 @@
 
         {{ load_ok and price_very_low }}
 
+# Surplus discharge budget for summer/strong-solar nights.
+# Intent: if the battery clearly contains more energy than the house is likely
+# to use before solar production returns, allow a small price-aware extra
+# discharge budget. This keeps the existing "house from battery, car from grid"
+# protection intact, while avoiding carrying unused surplus into a strong solar
+# morning where it would only reduce PV headroom.
+- sensor:
+    - name: "Battery Surplus Discharge Power"
+      unique_id: battery_surplus_discharge_power
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      icon: mdi:battery-arrow-down-outline
+      state: >
+        {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
+        {% set reserve_soc = states('input_number.soc_target_default') | float(default=15) %}
+        {% set configured_safety_margin_wh = states('input_number.battery_surplus_safety_margin_wh') | float(default=700) %}
+        {% set configured_extra_cap_w = states('input_number.battery_surplus_extra_discharge_cap_w') | float(default=1000) %}
+        {% set safety_margin_wh = 700 if configured_safety_margin_wh <= 0 else configured_safety_margin_wh %}
+        {% set extra_cap_w = 1000 if configured_extra_cap_w <= 0 else configured_extra_cap_w %}
+        {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
+        {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
+        {% set weekday_wake = states('input_number.weekday_wake_hour') | float(default=5.5) %}
+        {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
+        {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
+        {% set current_soc = states('sensor.batterie_soc') | float(default=0) %}
+        {% set low_solar_threshold = states('input_number.low_solar_threshold_wh') | float(default=3000) %}
+        {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
+        {% set current_price_cents = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
+        {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
+        {% set manual_charge = is_state('input_boolean.manual_battery_charge', 'on') %}
+        {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+        {% set data_valid = is_state('binary_sensor.inverter_data_valid', 'on') %}
+
+        {% set current_hour = now().hour + (now().minute / 60) %}
+        {% set is_weekend = now().weekday() >= 5 %}
+        {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
+        {% set nr = as_datetime(state_attr('sun.sun','next_rising')) | as_local %}
+        {% set sunrise_hour = nr.hour + (nr.minute / 60) %}
+        {% set solar_start_hour = [sunrise_hour + 1.0, 9.0] | min %}
+        {% set evening_start_hour = sleep_hour - 2 %}
+
+        {% if current_hour < solar_start_hour %}
+          {% set active_window = true %}
+          {% set hours_to_solar = solar_start_hour - current_hour %}
+          {% if current_hour < wake_hour %}
+            {% set required_until_solar_wh = ((wake_hour - current_hour) * night_rate) + (([solar_start_hour - wake_hour, 0] | max) * day_rate) %}
+          {% else %}
+            {% set required_until_solar_wh = hours_to_solar * day_rate %}
+          {% endif %}
+          {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_morgen') | float(default=0) * 1000 %}
+        {% elif current_hour >= evening_start_hour %}
+          {% set active_window = true %}
+          {% set hours_to_solar = (24 - current_hour) + solar_start_hour %}
+          {% if current_hour < sleep_hour %}
+            {% set required_until_solar_wh = ((sleep_hour - current_hour) * day_rate) + ((24 - sleep_hour + wake_hour) * night_rate) + (([solar_start_hour - wake_hour, 0] | max) * day_rate) %}
+          {% else %}
+            {% set required_until_solar_wh = ((24 - current_hour + wake_hour) * night_rate) + (([solar_start_hour - wake_hour, 0] | max) * day_rate) %}
+          {% endif %}
+          {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_morgen') | float(default=0) * 1000 %}
+        {% else %}
+          {% set active_window = false %}
+          {% set hours_to_solar = 0 %}
+          {% set required_until_solar_wh = 0 %}
+          {% set expected_solar_wh = 0 %}
+        {% endif %}
+
+        {% set usable_solar_wh = expected_solar_wh * 0.9 %}
+        {% set strong_solar_threshold_wh = [low_solar_threshold, battery_capacity * 0.8] | max %}
+        {% set solar_recovery_ok = usable_solar_wh >= strong_solar_threshold_wh %}
+        {% set available_above_reserve_wh = [(current_soc - reserve_soc) / 100 * battery_capacity, 0] | max %}
+        {% set surplus_wh = [available_above_reserve_wh - required_until_solar_wh - safety_margin_wh, 0] | max %}
+
+        {% if not price_data_valid %}
+          {% set price_factor = 0.25 %}
+        {% elif current_price_cents < 0 %}
+          {% set price_factor = 0 %}
+        {% elif percentile <= 25 %}
+          {% set price_factor = 0.15 %}
+        {% elif percentile <= 50 %}
+          {% set price_factor = 0.35 %}
+        {% elif percentile <= 80 %}
+          {% set price_factor = 0.50 %}
+        {% else %}
+          {% set price_factor = 0.75 %}
+        {% endif %}
+
+        {% if active_window and solar_recovery_ok and data_valid and not manual_charge and not charging_active and current_soc >= (reserve_soc + 5) and hours_to_solar > 0.25 and surplus_wh > 0 %}
+          {% set raw_extra_w = surplus_wh / hours_to_solar %}
+          {{ [[[raw_extra_w * price_factor, extra_cap_w] | min, 0] | max, 6000] | min | round(0) }}
+        {% else %}
+          0
+        {% endif %}
+      attributes:
+        calculation_data: >
+          {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
+          {% set reserve_soc = states('input_number.soc_target_default') | float(default=15) %}
+          {% set configured_safety_margin_wh = states('input_number.battery_surplus_safety_margin_wh') | float(default=700) %}
+          {% set configured_extra_cap_w = states('input_number.battery_surplus_extra_discharge_cap_w') | float(default=1000) %}
+          {% set safety_margin_wh = 700 if configured_safety_margin_wh <= 0 else configured_safety_margin_wh %}
+          {% set extra_cap_w = 1000 if configured_extra_cap_w <= 0 else configured_extra_cap_w %}
+          {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
+          {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
+          {% set weekday_wake = states('input_number.weekday_wake_hour') | float(default=5.5) %}
+          {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
+          {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
+          {% set current_soc = states('sensor.batterie_soc') | float(default=0) %}
+          {% set low_solar_threshold = states('input_number.low_solar_threshold_wh') | float(default=3000) %}
+          {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
+          {% set current_price_cents = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
+          {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
+          {% set manual_charge = is_state('input_boolean.manual_battery_charge', 'on') %}
+          {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
+          {% set data_valid = is_state('binary_sensor.inverter_data_valid', 'on') %}
+          {% set current_hour = now().hour + (now().minute / 60) %}
+          {% set is_weekend = now().weekday() >= 5 %}
+          {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
+          {% set nr = as_datetime(state_attr('sun.sun','next_rising')) | as_local %}
+          {% set sunrise_hour = nr.hour + (nr.minute / 60) %}
+          {% set solar_start_hour = [sunrise_hour + 1.0, 9.0] | min %}
+          {% set evening_start_hour = sleep_hour - 2 %}
+          {% if current_hour < solar_start_hour %}
+            {% set active_window = true %}
+            {% set hours_to_solar = solar_start_hour - current_hour %}
+            {% if current_hour < wake_hour %}
+              {% set required_until_solar_wh = ((wake_hour - current_hour) * night_rate) + (([solar_start_hour - wake_hour, 0] | max) * day_rate) %}
+            {% else %}
+              {% set required_until_solar_wh = hours_to_solar * day_rate %}
+            {% endif %}
+            {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_morgen') | float(default=0) * 1000 %}
+            {% set bridge_type = "night_to_solar" %}
+          {% elif current_hour >= evening_start_hour %}
+            {% set active_window = true %}
+            {% set hours_to_solar = (24 - current_hour) + solar_start_hour %}
+            {% if current_hour < sleep_hour %}
+              {% set required_until_solar_wh = ((sleep_hour - current_hour) * day_rate) + ((24 - sleep_hour + wake_hour) * night_rate) + (([solar_start_hour - wake_hour, 0] | max) * day_rate) %}
+              {% set bridge_type = "evening_to_solar_next" %}
+            {% else %}
+              {% set required_until_solar_wh = ((24 - current_hour + wake_hour) * night_rate) + (([solar_start_hour - wake_hour, 0] | max) * day_rate) %}
+              {% set bridge_type = "sleep_to_solar_next" %}
+            {% endif %}
+            {% set expected_solar_wh = states('sensor.solcast_pv_forecast_prognose_morgen') | float(default=0) * 1000 %}
+          {% else %}
+            {% set active_window = false %}
+            {% set hours_to_solar = 0 %}
+            {% set required_until_solar_wh = 0 %}
+            {% set expected_solar_wh = 0 %}
+            {% set bridge_type = "inactive_daytime" %}
+          {% endif %}
+          {% set usable_solar_wh = expected_solar_wh * 0.9 %}
+          {% set strong_solar_threshold_wh = [low_solar_threshold, battery_capacity * 0.8] | max %}
+          {% set solar_recovery_ok = usable_solar_wh >= strong_solar_threshold_wh %}
+          {% set available_above_reserve_wh = [(current_soc - reserve_soc) / 100 * battery_capacity, 0] | max %}
+          {% set surplus_wh = [available_above_reserve_wh - required_until_solar_wh - safety_margin_wh, 0] | max %}
+          {% if not price_data_valid %}
+            {% set price_factor = 0.25 %}
+            {% set reason = "Price data invalid: cautious surplus use" %}
+          {% elif current_price_cents < 0 %}
+            {% set price_factor = 0 %}
+            {% set reason = "Negative price: keep car on grid" %}
+          {% elif percentile <= 25 %}
+            {% set price_factor = 0.15 %}
+            {% set reason = "Cheap price: minimal surplus use" %}
+          {% elif percentile <= 50 %}
+            {% set price_factor = 0.35 %}
+            {% set reason = "Normal price: moderate surplus use" %}
+          {% elif percentile <= 80 %}
+            {% set price_factor = 0.50 %}
+            {% set reason = "High price: stronger surplus use" %}
+          {% else %}
+            {% set price_factor = 0.75 %}
+            {% set reason = "Very high price: strongest capped surplus use" %}
+          {% endif %}
+          {% set raw_extra_w = (surplus_wh / hours_to_solar) if hours_to_solar > 0.25 else 0 %}
+          {% set enabled = active_window and solar_recovery_ok and data_valid and not manual_charge and not charging_active and current_soc >= (reserve_soc + 5) and hours_to_solar > 0.25 and surplus_wh > 0 %}
+          {
+            "active_window": {{ active_window | lower }},
+            "bridge_type": "{{ bridge_type }}",
+            "hours_to_solar": {{ hours_to_solar | round(2) }},
+            "required_until_solar_wh": {{ required_until_solar_wh | round(0) }},
+            "safety_margin_wh": {{ safety_margin_wh | round(0) }},
+            "available_above_reserve_wh": {{ available_above_reserve_wh | round(0) }},
+            "surplus_wh": {{ surplus_wh | round(0) }},
+            "expected_solar_wh": {{ expected_solar_wh | round(0) }},
+            "usable_solar_wh": {{ usable_solar_wh | round(0) }},
+            "strong_solar_threshold_wh": {{ strong_solar_threshold_wh | round(0) }},
+            "solar_recovery_ok": {{ solar_recovery_ok | lower }},
+            "price_factor": {{ price_factor }},
+            "raw_extra_w": {{ raw_extra_w | round(0) }},
+            "extra_cap_w": {{ extra_cap_w | round(0) }},
+            "enabled": {{ enabled | lower }},
+            "decision_reason": "{{ reason }}"
+          }
+
 # Dynamic discharge limit based on price and battery level
 - sensor:
     - name: "Discharge Limit Percentage"
@@ -686,11 +880,15 @@
           {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
           {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
           {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
+          {% set surplus_extra_power = states('sensor.battery_surplus_discharge_power') | float(default=0) %}
           {% set total_consumption = [grid_power, 0] | max + ac_output %}
           {% set house_load = [total_consumption - wallbox_power, 0] | max %}
           
-          {# Only allow enough discharge to cover the house load + 15% safety margin #}
-          {% set desired_limit = (house_load * 1.15 / battery_max_power * 100) | round(1) %}
+          {# Baseline covers house load only. The surplus sensor may add a small #}
+          {# price-aware budget when the battery is clearly overfilled for the #}
+          {# remaining night and a strong solar recovery is forecast. #}
+          {% set allowed_battery_power = (house_load * 1.15) + surplus_extra_power %}
+          {% set desired_limit = (allowed_battery_power / battery_max_power * 100) | round(1) %}
           {# Clamp between 1% (minimum to keep battery responsive) and 100% #}
           {{ [[desired_limit, 1.0] | max, 100] | min }}
         {% endif %}

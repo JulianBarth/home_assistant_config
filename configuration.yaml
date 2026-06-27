@@ -186,6 +186,24 @@ input_number:
     unit_of_measurement: "Wh"
     icon: mdi:weather-sunny-off
 
+  # Surplus discharge policy: only spends battery energy that is unlikely to be
+  # needed by the house before solar production recovers.
+  battery_surplus_safety_margin_wh:
+    name: Battery Surplus Safety Margin
+    min: 0
+    max: 3000
+    step: 100
+    unit_of_measurement: "Wh"
+    icon: mdi:shield-battery
+
+  battery_surplus_extra_discharge_cap_w:
+    name: Battery Surplus Extra Discharge Cap
+    min: 0
+    max: 3000
+    step: 100
+    unit_of_measurement: "W"
+    icon: mdi:battery-arrow-down
+
 sensor:
 
   - platform: rest
