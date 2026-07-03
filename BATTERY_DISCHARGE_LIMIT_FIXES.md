@@ -165,6 +165,34 @@ deviation as an instantaneous condition every 5 minutes; changed to a
 template trigger with `for: "00:05:00"` so only a *sustained* deviation
 alerts (spec compliance, avoids false alarms during limit oscillation).
 
+## Post-deployment verification (2026-07-03, 21:11–21:17)
+
+HA restarted with the fixes at 21:10 while the car was charging. Registers
+monitored live via Modbus TCP:
+
+```
+21:14:47  StorCtl=0  OutWRte=100%   batt→car 5896 W   ← post-restart hysteresis window
+21:15:07  StorCtl=3  OutWRte=5.8%   batt 586 W  grid 10637 W   ← watchdog asserted
+21:16:08  StorCtl=3  OutWRte=6.0%   batt 616 W
+21:17:08  StorCtl=3  OutWRte=5.4%   batt 554 W
+```
+
+All acceptance criteria passed:
+
+- **Enforcement exact**: 5.8 % × 10240 W = 594 W commanded, 586 W measured;
+  the car's full ~10 kW load shifted to the grid, SoC stopped falling.
+- **Timing as designed**: wallbox stable 21:11:15 + 3-min hysteresis
+  (`input_number.car_charging_hysteresis_minutes`) → mode flip ~21:14:15 →
+  register asserted 21:15:07, within one watchdog tick.
+- **Limit stable**: 5.4–6.0 % (was swinging 7 % ↔ 33 % before the smoothed
+  house-load input).
+- **Observability**: `switch.storctl_mod` matched the actual register
+  throughout (verify block working).
+
+Remaining known window: ~3–4 min of unlimited discharge at HA restart or
+first plug-in (hysteresis + one watchdog tick). Reduce the hysteresis slider
+to shrink it if desired.
+
 ## Deployment
 
 - `automations.yaml` / `templates.yaml`: reloadable from the UI
