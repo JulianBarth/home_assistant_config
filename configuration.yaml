@@ -42,6 +42,20 @@ input_boolean:
   manual_battery_charge:
     name: Manual Battery Charge
 
+  # Car smart charging (solar-backed boost + cheap grid windows)
+  car_smart_charging_on:
+    name: Car Smart Charging Automation is On
+    icon: mdi:car-electric
+  car_boost_active:
+    name: Car Solar-Backed Boost Active
+    icon: mdi:car-turbocharger
+  car_cheap_grid_active:
+    name: Car Cheap Grid Charging Active
+    icon: mdi:cash-clock
+  car_boost_suppressed:
+    name: Car Boost Suppressed Until Replug
+    icon: mdi:car-off
+
 input_number:
   battery_target_soc:
     name: Battery Target SoC
@@ -203,6 +217,56 @@ input_number:
     step: 100
     unit_of_measurement: "W"
     icon: mdi:battery-arrow-down
+
+  # Car smart charging parameters (recommended values in CAR_SMART_CHARGING.md —
+  # helpers start at `min` on first deploy, set them via UI once)
+  car_boost_min_soc:
+    name: Car Boost Battery Floor SoC
+    min: 10
+    max: 60
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:battery-30
+
+  car_boost_min_budget_wh:
+    name: Car Boost Minimum Start Budget
+    min: 500
+    max: 10000
+    step: 100
+    unit_of_measurement: "Wh"
+    icon: mdi:battery-plus-variant
+
+  car_boost_solar_confidence_pct:
+    name: Car Boost Solar Forecast Confidence
+    min: 30
+    max: 100
+    step: 5
+    unit_of_measurement: "%"
+    icon: mdi:weather-sunny-alert
+
+  car_boost_charging_current_a:
+    name: Car Boost Charging Current
+    min: 6
+    max: 16
+    step: 1
+    unit_of_measurement: "A"
+    icon: mdi:current-ac
+
+  car_cheap_grid_percentile:
+    name: Car Cheap Grid Start Percentile
+    min: 0
+    max: 50
+    step: 5
+    unit_of_measurement: "%"
+    icon: mdi:percent
+
+  car_cheap_grid_max_price_ct:
+    name: Car Cheap Grid Price Ceiling
+    min: 0
+    max: 40
+    step: 1
+    unit_of_measurement: "Cent/kWh"
+    icon: mdi:cash-lock
 
 sensor:
 

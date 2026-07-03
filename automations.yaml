@@ -596,6 +596,376 @@
       target:
         entity_id: script.set_dynamic_discharge_limit
 
+# =============================================================================
+# CAR SMART CHARGING (see CAR_SMART_CHARGING.md)
+# Two independent mechanisms, cheap-grid takes precedence over boost:
+#  - Solar-backed boost: Wattpilot native Boost lends home-battery energy to
+#    the car while the charger stays in Eco, only when the coming sun will
+#    demonstrably refill the loan (sensor.car_boost_energy_budget).
+#  - Cheap grid window: very cheap/negative Tibber prices temporarily switch
+#    Eco -> Default; the existing car-protection (car_charging_only) then keeps
+#    the house on battery while the car charges from grid.
+# =============================================================================
+- alias: "Car Smart Charging Coordinator"
+  description: "Starts/stops solar-backed car boost and cheap grid charging windows"
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.car_cheap_grid_window
+        - binary_sensor.car_boost_viable
+        - select.wattpilot_charging_mode
+    - platform: state
+      entity_id: binary_sensor.wattpilot_33175380_stecker
+      to: "off"
+    - platform: state
+      entity_id: switch.wattpilot_boost
+      to: "off"
+    - platform: state
+      entity_id: input_boolean.car_smart_charging_on
+      to: "off"
+    - platform: state
+      entity_id: input_boolean.battery_charging_active
+      to: "on"
+    - platform: time_pattern
+      minutes: "/5"
+  action:
+    - choose:
+        # 0. Master switch off — release everything we control
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.car_smart_charging_on
+              state: "off"
+            - condition: template
+              value_template: >
+                {{ is_state('input_boolean.car_boost_active', 'on')
+                   or is_state('input_boolean.car_cheap_grid_active', 'on') }}
+          sequence:
+            - service: switch.turn_off
+              target:
+                entity_id: switch.wattpilot_boost
+            - service: number.set_value
+              target:
+                entity_id: number.wattpilot_max_charging_current
+              data:
+                value: 16
+            - if:
+                - condition: state
+                  entity_id: input_boolean.car_cheap_grid_active
+                  state: "on"
+                - condition: state
+                  entity_id: select.wattpilot_charging_mode
+                  state: "Default"
+              then:
+                - service: select.select_option
+                  target:
+                    entity_id: select.wattpilot_charging_mode
+                  data:
+                    option: "Eco"
+            - service: input_boolean.turn_off
+              target:
+                entity_id:
+                  - input_boolean.car_boost_active
+                  - input_boolean.car_cheap_grid_active
+
+        # 1. User override detected: we set Default, someone changed the mode.
+        #    Hands off — clear the flag without touching the charger.
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.car_cheap_grid_active
+              state: "on"
+            - condition: template
+              value_template: "{{ not is_state('select.wattpilot_charging_mode', 'Default') }}"
+          sequence:
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.car_cheap_grid_active
+
+        # 2. Cheap grid window ended (or car unplugged) — back to Eco
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.car_cheap_grid_active
+              state: "on"
+            - condition: template
+              value_template: >
+                {{ is_state('binary_sensor.car_cheap_grid_window', 'off')
+                   or is_state('binary_sensor.wattpilot_33175380_stecker', 'off') }}
+          sequence:
+            - service: select.select_option
+              target:
+                entity_id: select.wattpilot_charging_mode
+              data:
+                option: "Eco"
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.car_cheap_grid_active
+            - service: notify.battery_log
+              data:
+                message: >
+                  {"ts":"{{ now().isoformat() }}","type":"car","event":"cheap_grid_stop","price_ct":{{ (states('sensor.tibber_cached_energy_prices') | float(999) * 100) | round(2) }},"percentile":{{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(100) }},"session_wh":{{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }}}
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                title: "🚗 Cheap Grid Charging Ended"
+                message: >-
+                  Wallbox back in Eco. Price now
+                  {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(1) }} ct/kWh
+                  (percentile {{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(0) | round(0) }}%).
+                data:
+                  tag: car_cheap_grid
+                  group: battery
+
+        # 3. Cheap grid window opened — Eco -> Default (grid charges the car,
+        #    existing car-protection keeps the house on battery)
+        - conditions:
+            - condition: state
+              entity_id: binary_sensor.car_cheap_grid_window
+              state: "on"
+            - condition: state
+              entity_id: input_boolean.car_cheap_grid_active
+              state: "off"
+            - condition: state
+              entity_id: select.wattpilot_charging_mode
+              state: "Eco"
+          sequence:
+            # Boost would fight grid charging — stop it first if running
+            - if:
+                - condition: state
+                  entity_id: input_boolean.car_boost_active
+                  state: "on"
+              then:
+                - service: switch.turn_off
+                  target:
+                    entity_id: switch.wattpilot_boost
+                - service: number.set_value
+                  target:
+                    entity_id: number.wattpilot_max_charging_current
+                  data:
+                    value: 16
+                - service: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.car_boost_active
+            - service: select.select_option
+              target:
+                entity_id: select.wattpilot_charging_mode
+              data:
+                option: "Default"
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.car_cheap_grid_active
+            - service: notify.battery_log
+              data:
+                message: >
+                  {"ts":"{{ now().isoformat() }}","type":"car","event":"cheap_grid_start","price_ct":{{ (states('sensor.tibber_cached_energy_prices') | float(999) * 100) | round(2) }},"percentile":{{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(100) }}}
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                title: "🚗 Cheap Grid Charging Started"
+                message: >-
+                  Price {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(1) }} ct/kWh
+                  (percentile {{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(0) | round(0) }}%)
+                  — wallbox switched Eco → Default. House stays on battery.
+                data:
+                  tag: car_cheap_grid
+                  group: battery
+
+        # 4. Boost no longer viable (budget spent, floor reached, unplugged,
+        #    Wattpilot stopped it natively, battery automation took over) — clean up
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.car_boost_active
+              state: "on"
+            - condition: template
+              value_template: >
+                {{ is_state('binary_sensor.car_boost_viable', 'off')
+                   or is_state('switch.wattpilot_boost', 'off')
+                   or is_state('binary_sensor.wattpilot_33175380_stecker', 'off') }}
+          sequence:
+            - service: switch.turn_off
+              target:
+                entity_id: switch.wattpilot_boost
+            - service: number.set_value
+              target:
+                entity_id: number.wattpilot_max_charging_current
+              data:
+                value: 16
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.car_boost_active
+            - service: notify.battery_log
+              data:
+                message: >
+                  {"ts":"{{ now().isoformat() }}","type":"car","event":"boost_stop","soc":{{ states('sensor.batterie_soc') | float(0) }},"budget_wh":{{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }},"session_wh":{{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }}}
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                title: "☀️ Car Solar Boost Ended"
+                message: >-
+                  Battery SoC {{ states('sensor.batterie_soc') }}%,
+                  remaining boost budget {{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }} Wh.
+                data:
+                  tag: car_boost
+                  group: battery
+
+        # 5. Boost start: sun will refill the battery — lend energy to the car
+        #    now via Wattpilot native Boost (charger stays in Eco)
+        - conditions:
+            - condition: state
+              entity_id: binary_sensor.car_boost_viable
+              state: "on"
+            - condition: state
+              entity_id: input_boolean.car_boost_active
+              state: "off"
+            - condition: state
+              entity_id: input_boolean.car_cheap_grid_active
+              state: "off"
+            - condition: state
+              entity_id: binary_sensor.car_cheap_grid_window
+              state: "off"
+            # Only kick in when Eco is NOT already charging the car (that's
+            # the point: bridge the no-surplus wait)
+            - condition: numeric_state
+              entity_id: sensor.wattpilot_charging_power
+              below: 100
+          sequence:
+            - service: select.select_option
+              target:
+                entity_id: select.wattpilot_boost_type
+              data:
+                option: "One-Time"
+            # Hardware-enforced stop: Wattpilot itself stops discharging the
+            # home battery at the computed floor SoC
+            - service: number.set_value
+              target:
+                entity_id: number.wattpilot_boost_discharges_until
+              data:
+                value: "{{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(default=30) | round(0) }}"
+            # Cap car power so the draw roughly matches battery + PV capability
+            - service: number.set_value
+              target:
+                entity_id: number.wattpilot_max_charging_current
+              data:
+                value: "{{ states('input_number.car_boost_charging_current_a') | float(default=6) | round(0) }}"
+            - service: switch.turn_on
+              target:
+                entity_id: switch.wattpilot_boost
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.car_boost_active
+            - service: notify.battery_log
+              data:
+                message: >
+                  {"ts":"{{ now().isoformat() }}","type":"car","event":"boost_start","soc":{{ states('sensor.batterie_soc') | float(0) }},"floor":{{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(30) }},"budget_wh":{{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }},"data":{{ (state_attr('sensor.car_boost_energy_budget', 'calculation_data') or {}) | to_json }}}
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                title: "☀️ Car Solar Boost Started"
+                message: >-
+                  Sun will refill the battery — lending
+                  {{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }} Wh
+                  to the car at {{ states('input_number.car_boost_charging_current_a') | float(6) | round(0) }} A.
+                  Battery {{ states('sensor.batterie_soc') }}% → floor
+                  {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(30) | round(0) }}%.
+                data:
+                  tag: car_boost
+                  group: battery
+  mode: single
+  max_exceeded: silent
+
+- alias: "Car Boost No-Power Watchdog"
+  description: "Stops a boost that moves no energy (car full/paused) and suppresses retries until replug"
+  trigger:
+    # Poll-based on purpose: a numeric_state trigger only fires on a threshold
+    # crossing — if the car never draws power after boost start, it would
+    # never fire. This checks every 5 minutes instead.
+    - platform: time_pattern
+      minutes: "/5"
+  condition:
+    - condition: state
+      entity_id: input_boolean.car_boost_active
+      state: "on"
+      for:
+        minutes: 15
+    - condition: numeric_state
+      entity_id: sensor.wattpilot_charging_power
+      below: 100
+  action:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.wattpilot_boost
+    - service: number.set_value
+      target:
+        entity_id: number.wattpilot_max_charging_current
+      data:
+        value: 16
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.car_boost_active
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.car_boost_suppressed
+    - service: notify.battery_log
+      data:
+        message: >
+          {"ts":"{{ now().isoformat() }}","type":"car","event":"boost_suppressed","reason":"no_power_15min","carstate":"{{ states('sensor.wattpilot_carstate') }}"}
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        title: "☀️ Car Solar Boost Suppressed"
+        message: >-
+          Boost was active but the car drew no power for 15 min
+          (car state: {{ states('sensor.wattpilot_carstate') }}).
+          Suppressed until the car is replugged.
+        data:
+          tag: car_boost
+          group: battery
+
+- alias: "Car Boost Suppression Reset"
+  description: "Replugging the car clears the boost suppression"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.wattpilot_33175380_stecker
+      from: "off"
+      to: "on"
+  action:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.car_boost_suppressed
+
+- alias: "Reset Car Smart Charging on Startup"
+  description: "Clears stale car boost / cheap grid state after a HA restart"
+  trigger:
+    - platform: homeassistant
+      event: start
+  action:
+    - delay:
+        seconds: 45
+    - if:
+        - condition: state
+          entity_id: input_boolean.car_boost_active
+          state: "on"
+      then:
+        - service: switch.turn_off
+          target:
+            entity_id: switch.wattpilot_boost
+        - service: number.set_value
+          target:
+            entity_id: number.wattpilot_max_charging_current
+          data:
+            value: 16
+    - if:
+        - condition: state
+          entity_id: input_boolean.car_cheap_grid_active
+          state: "on"
+        - condition: state
+          entity_id: select.wattpilot_charging_mode
+          state: "Default"
+      then:
+        - service: select.select_option
+          target:
+            entity_id: select.wattpilot_charging_mode
+          data:
+            option: "Eco"
+    - service: input_boolean.turn_off
+      target:
+        entity_id:
+          - input_boolean.car_boost_active
+          - input_boolean.car_cheap_grid_active
+
 - alias: "Notify when Discharge Limit Enforcement Fails"
   description: "Alerts if the inverter's actual discharge rate drifts above the commanded limit for 5+ minutes"
   trigger:

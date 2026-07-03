@@ -1704,3 +1704,194 @@
       icon: mdi:alert-circle
       state: >
         {{ states('sensor.tibber_pulse_luftehutte_stromerzeugung') in ['unavailable', 'unknown', 'None'] }}
+
+# ============================================================================
+# Car Smart Charging (solar-backed boost + cheap grid windows)
+# Concept: when today's remaining solar will demonstrably refill the home
+# battery anyway, lend battery energy to the car NOW via the Wattpilot's
+# native Boost (works as an overlay while the charger stays in Eco).
+# Independently, very cheap grid prices open a "cheap grid window" that
+# temporarily switches the charger from Eco to Default (full grid charge),
+# which the existing car-protection then handles (house from battery,
+# car from grid). See CAR_SMART_CHARGING.md.
+# ============================================================================
+- sensor:
+    - name: "Car Boost Energy Budget"
+      unique_id: car_boost_energy_budget_wh
+      unit_of_measurement: "Wh"
+      icon: mdi:car-electric-outline
+      state: >
+        {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
+        {% set soc = states('sensor.batterie_soc') | float(default=0) %}
+        {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
+        {% set floor_soc = [states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max %}
+        {% set confidence = states('input_number.car_boost_solar_confidence_pct') | float(default=70) / 100 %}
+        {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
+        {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
+        {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
+        {% set weekday_wake = states('input_number.weekday_wake_hour') | float(default=5.5) %}
+        {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
+        {% set safety = states('input_number.battery_surplus_safety_margin_wh') | float(default=700) %}
+
+        {% set remaining_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000 %}
+        {% set usable_solar_wh = remaining_solar_wh * confidence %}
+
+        {% set current_hour = now().hour + (now().minute / 60) %}
+        {% set is_weekend = now().weekday() >= 5 %}
+        {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
+        {% set sunset_dt = as_datetime(state_attr('sun.sun','next_setting')) | as_local %}
+        {% set sunset_hour = sunset_dt.hour + (sunset_dt.minute / 60) %}
+        {% set nr = as_datetime(state_attr('sun.sun','next_rising')) | as_local %}
+        {% set sunrise_hour = nr.hour + (nr.minute / 60) %}
+        {% set solar_start_hour = [sunrise_hour + 1.0, 9.0] | min %}
+
+        {# House consumption between now and sunset (night portion at night rate) #}
+        {% if current_hour < wake_hour %}
+          {% set house_until_sunset_wh = ((wake_hour - current_hour) * night_rate) + (([sunset_hour - wake_hour, 0] | max) * day_rate) %}
+        {% else %}
+          {% set house_until_sunset_wh = ([sunset_hour - current_hour, 0] | max) * day_rate %}
+        {% endif %}
+
+        {# Overnight consumption the battery must still cover after sunset #}
+        {% set tomorrow_weekend = ((now().weekday() + 1) % 7) >= 5 %}
+        {% set tomorrow_wake = weekend_wake if tomorrow_weekend else weekday_wake %}
+        {% set breakfast_hours = [solar_start_hour - tomorrow_wake, 0] | max %}
+        {% set overnight_need_wh = ((24 - sleep_hour + tomorrow_wake) * night_rate) + (breakfast_hours * day_rate) %}
+
+        {% set soc_wh = soc / 100 * battery_capacity %}
+        {% set reserve_wh = reserve / 100 * battery_capacity %}
+        {% set floor_wh = floor_soc / 100 * battery_capacity %}
+        {% set needed_at_sunset_wh = reserve_wh + overnight_need_wh + safety %}
+        {% set solar_surplus_wh = [usable_solar_wh - house_until_sunset_wh, 0] | max %}
+
+        {# Budget = min of three constraints:                                  #}
+        {# 1. what the battery can lend now without dropping below the floor   #}
+        {# 2. what still leaves the battery covering tonight after solar refill #}
+        {# 3. what the coming sun can actually refill (surplus after house) — #}
+        {#    this is the "sun will re-charge the battery" requirement          #}
+        {{ [[soc_wh - floor_wh, soc_wh + solar_surplus_wh - needed_at_sunset_wh, solar_surplus_wh] | min, 0] | max | round(0) }}
+      attributes:
+        floor_soc: >
+          {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
+          {{ [states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max | round(0) }}
+        calculation_data: >
+          {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
+          {% set soc = states('sensor.batterie_soc') | float(default=0) %}
+          {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
+          {% set floor_soc = [states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max %}
+          {% set confidence = states('input_number.car_boost_solar_confidence_pct') | float(default=70) / 100 %}
+          {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
+          {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
+          {% set sleep_hour = states('input_number.sleep_hour') | float(default=22) %}
+          {% set weekday_wake = states('input_number.weekday_wake_hour') | float(default=5.5) %}
+          {% set weekend_wake = states('input_number.weekend_wake_hour') | float(default=7.5) %}
+          {% set safety = states('input_number.battery_surplus_safety_margin_wh') | float(default=700) %}
+          {% set remaining_solar_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000 %}
+          {% set usable_solar_wh = remaining_solar_wh * confidence %}
+          {% set current_hour = now().hour + (now().minute / 60) %}
+          {% set is_weekend = now().weekday() >= 5 %}
+          {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
+          {% set sunset_dt = as_datetime(state_attr('sun.sun','next_setting')) | as_local %}
+          {% set sunset_hour = sunset_dt.hour + (sunset_dt.minute / 60) %}
+          {% set nr = as_datetime(state_attr('sun.sun','next_rising')) | as_local %}
+          {% set sunrise_hour = nr.hour + (nr.minute / 60) %}
+          {% set solar_start_hour = [sunrise_hour + 1.0, 9.0] | min %}
+          {% if current_hour < wake_hour %}
+            {% set house_until_sunset_wh = ((wake_hour - current_hour) * night_rate) + (([sunset_hour - wake_hour, 0] | max) * day_rate) %}
+          {% else %}
+            {% set house_until_sunset_wh = ([sunset_hour - current_hour, 0] | max) * day_rate %}
+          {% endif %}
+          {% set tomorrow_weekend = ((now().weekday() + 1) % 7) >= 5 %}
+          {% set tomorrow_wake = weekend_wake if tomorrow_weekend else weekday_wake %}
+          {% set breakfast_hours = [solar_start_hour - tomorrow_wake, 0] | max %}
+          {% set overnight_need_wh = ((24 - sleep_hour + tomorrow_wake) * night_rate) + (breakfast_hours * day_rate) %}
+          {% set soc_wh = soc / 100 * battery_capacity %}
+          {% set reserve_wh = reserve / 100 * battery_capacity %}
+          {% set floor_wh = floor_soc / 100 * battery_capacity %}
+          {% set needed_at_sunset_wh = reserve_wh + overnight_need_wh + safety %}
+          {% set solar_surplus_wh = [usable_solar_wh - house_until_sunset_wh, 0] | max %}
+          {% set c1 = soc_wh - floor_wh %}
+          {% set c2 = soc_wh + solar_surplus_wh - needed_at_sunset_wh %}
+          {% set c3 = solar_surplus_wh %}
+          {% set budget = [[c1, c2, c3] | min, 0] | max %}
+          {% if budget <= 0 %}
+            {% if c3 <= 0 %}
+              {% set reason = "No solar surplus coming: sun cannot refill a loan" %}
+            {% elif c1 <= 0 %}
+              {% set reason = "Battery at/below boost floor" %}
+            {% else %}
+              {% set reason = "Tonight's need not covered after refill" %}
+            {% endif %}
+          {% else %}
+            {% set limiting = "floor" if c1 == budget else ("overnight_need" if c2 == budget else "solar_surplus") %}
+            {% set reason = "Budget available, limited by " ~ limiting %}
+          {% endif %}
+          {
+            "soc": {{ soc | round(1) }},
+            "floor_soc": {{ floor_soc | round(0) }},
+            "remaining_solar_wh": {{ remaining_solar_wh | round(0) }},
+            "usable_solar_wh": {{ usable_solar_wh | round(0) }},
+            "house_until_sunset_wh": {{ house_until_sunset_wh | round(0) }},
+            "solar_surplus_wh": {{ solar_surplus_wh | round(0) }},
+            "overnight_need_wh": {{ overnight_need_wh | round(0) }},
+            "needed_at_sunset_wh": {{ needed_at_sunset_wh | round(0) }},
+            "constraint_floor_wh": {{ c1 | round(0) }},
+            "constraint_overnight_wh": {{ c2 | round(0) }},
+            "constraint_solar_wh": {{ c3 | round(0) }},
+            "budget_wh": {{ budget | round(0) }},
+            "decision_reason": "{{ reason }}"
+          }
+
+- binary_sensor:
+    - name: "Car Boost Viable"
+      unique_id: car_boost_viable
+      icon: mdi:car-turbocharger
+      state: >
+        {% set master = is_state('input_boolean.car_smart_charging_on', 'on') %}
+        {% set plugged = is_state('binary_sensor.wattpilot_33175380_stecker', 'on') %}
+        {% set eco_mode = is_state('select.wattpilot_charging_mode', 'Eco') %}
+        {% set suppressed = is_state('input_boolean.car_boost_suppressed', 'on') %}
+        {% set data_valid = is_state('binary_sensor.inverter_data_valid', 'on') %}
+        {% set battery_busy = is_state('input_boolean.battery_charging_active', 'on')
+                              or is_state('input_boolean.battery_no_discharging_active', 'on')
+                              or is_state('input_boolean.manual_battery_charge', 'on') %}
+        {% set soc = states('sensor.batterie_soc') | float(default=0) %}
+        {% set floor_soc = state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(default=30) %}
+        {% set budget = states('sensor.car_boost_energy_budget') | float(default=0) %}
+        {% set min_budget = states('input_number.car_boost_min_budget_wh') | float(default=2000) %}
+        {% set boost_running = is_state('input_boolean.car_boost_active', 'on') %}
+
+        {% if boost_running %}
+          {# Keep viable while running until the budget is truly gone — the #}
+          {# min_budget threshold only gates STARTING a boost (hysteresis). #}
+          {{ master and plugged and eco_mode and data_valid and not battery_busy
+             and soc > floor_soc and budget > 0 }}
+        {% else %}
+          {{ master and plugged and eco_mode and not suppressed and data_valid
+             and not battery_busy and soc >= (floor_soc + 3) and budget >= min_budget }}
+        {% endif %}
+
+    - name: "Car Cheap Grid Window"
+      unique_id: car_cheap_grid_window
+      icon: mdi:cash-clock
+      state: >
+        {% set master = is_state('input_boolean.car_smart_charging_on', 'on') %}
+        {% set plugged = is_state('binary_sensor.wattpilot_33175380_stecker', 'on') %}
+        {% set price_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
+        {% set price_ct = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
+        {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
+        {% set start_pct = states('input_number.car_cheap_grid_percentile') | float(default=10) %}
+        {% set ceiling_ct = states('input_number.car_cheap_grid_max_price_ct') | float(default=15) %}
+        {% set currently_on = is_state('binary_sensor.car_cheap_grid_window', 'on') %}
+
+        {% if not (master and plugged and price_valid) %}
+          {{ false }}
+        {% elif price_ct < 0 %}
+          {# Negative price: always charge the car from grid #}
+          {{ true }}
+        {% elif currently_on %}
+          {# Hysteresis: stay on until clearly out of the cheap zone #}
+          {{ percentile <= (start_pct + 15) and price_ct <= (ceiling_ct + 2) }}
+        {% else %}
+          {{ percentile <= start_pct and price_ct <= ceiling_ct }}
+        {% endif %}
