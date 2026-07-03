@@ -135,6 +135,13 @@ views:
             name: Charging Active
           - entity: input_boolean.battery_no_discharging_active
             name: Discharge Limited
+          - type: divider
+          - entity: input_boolean.car_smart_charging_on
+            name: Car Smart Charging
+          - entity: input_boolean.car_boost_active
+            name: Car Solar Boost Active
+          - entity: input_boolean.car_cheap_grid_active
+            name: Car Cheap Grid Active
 
       # --- SOC HISTORY (compact) ---
       - type: history-graph
@@ -448,6 +455,7 @@ views:
       - type: entities
         title: "🚗 Wallbox & Car"
         show_header_toggle: false
+        state_color: true
         entities:
           - entity: sensor.wattpilot_carconnected
             name: Status
@@ -457,6 +465,55 @@ views:
             name: Charging Power
           - entity: input_boolean.battery_no_discharging_active
             name: Discharge Limited (Car)
+          - type: divider
+          - type: section
+            label: Smart Charging
+          - entity: input_boolean.car_smart_charging_on
+            name: Smart Charging Enabled
+          - entity: sensor.car_boost_energy_budget
+            name: Boost Budget
+          - entity: binary_sensor.car_boost_viable
+            name: Boost Viable
+          - entity: input_boolean.car_boost_active
+            name: Solar Boost Active
+          - entity: binary_sensor.car_cheap_grid_window
+            name: Cheap Grid Window
+          - entity: input_boolean.car_cheap_grid_active
+            name: Cheap Grid Active
+          - entity: input_boolean.car_boost_suppressed
+            name: Boost Suppressed (until replug)
+
+      # --- CAR SMART CHARGING DECISION ---
+      - type: markdown
+        title: "☀️ Car Boost Decision Detail"
+        content: |
+          {% set data = state_attr('sensor.car_boost_energy_budget', 'calculation_data') %}
+          {% if data %}
+          **Budget:** {{ states('sensor.car_boost_energy_budget') }} Wh &nbsp; | &nbsp;
+          **Floor:** {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') }}% &nbsp; | &nbsp;
+          **Viable:** {{ states('binary_sensor.car_boost_viable') }}
+
+          **Reason:** {{ data.decision_reason }}
+
+          ### Budget Constraints (minimum wins)
+          | Constraint | Value |
+          |-----------|-------|
+          | 1 — Battery above floor | {{ data.constraint_floor_wh }} Wh |
+          | 2 — Tonight still covered | {{ data.constraint_overnight_wh }} Wh |
+          | 3 — Sun can refill the loan | {{ data.constraint_solar_wh }} Wh |
+
+          ### Inputs
+          | Parameter | Value |
+          |-----------|-------|
+          | Battery SoC | {{ data.soc }}% |
+          | Solar remaining today | {{ data.remaining_solar_wh }} Wh |
+          | Usable (× confidence) | {{ data.usable_solar_wh }} Wh |
+          | House until sunset | {{ data.house_until_sunset_wh }} Wh |
+          | Solar surplus | {{ data.solar_surplus_wh }} Wh |
+          | Needed at sunset | {{ data.needed_at_sunset_wh }} Wh |
+          {% else %}
+          *Waiting for data...*
+          {% endif %}
 
   # =========================================================================
   # VIEW 5: MONITORING — Historical graphs
@@ -601,11 +658,31 @@ views:
             name: Hold Battery SoC
 
       - type: entities
-        title: "Car Charging Settings"
+        title: "🚗 Car Charging Settings"
         show_header_toggle: false
         entities:
           - entity: input_number.car_charging_hysteresis_minutes
             name: Car Charging Hysteresis
+          - type: divider
+          - type: section
+            label: Solar-Backed Boost
+          - entity: input_boolean.car_smart_charging_on
+            name: Smart Charging Enabled
+          - entity: input_number.car_boost_min_soc
+            name: Battery Floor SoC (rec. 30%)
+          - entity: input_number.car_boost_min_budget_wh
+            name: Min Start Budget (rec. 2000 Wh)
+          - entity: input_number.car_boost_solar_confidence_pct
+            name: Solar Confidence (rec. 70%)
+          - entity: input_number.car_boost_charging_current_a
+            name: Boost Current (rec. 6 A)
+          - type: divider
+          - type: section
+            label: Cheap Grid Windows
+          - entity: input_number.car_cheap_grid_percentile
+            name: Start Percentile (rec. 10%)
+          - entity: input_number.car_cheap_grid_max_price_ct
+            name: Price Ceiling (rec. 15 ct)
 
   # =========================================================================
   # VIEW 7: DEBUG — Development and diagnostics (moved from other views)

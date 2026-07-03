@@ -121,7 +121,10 @@ boost start. Filter with `jq 'select(.type=="car")'`.
 ## Rollout
 
 1. Deploy config, restart HA (new helpers + template entities).
-2. Set helper values per the table above (they start at minimum = inert).
-3. Turn on `input_boolean.car_smart_charging_on`.
+2. Set helper values per the table above (they start at minimum = inert) —
+   dashboard **Configuration → 🚗 Car Charging Settings** has all sliders with
+   the recommended values in their labels.
+3. Turn on `input_boolean.car_smart_charging_on` (same card, also in Overview
+   Quick Controls). Live status + budget breakdown: **Charging Logic** view.
 4. Watch the first sunny morning: expect `boost_start` in the log when the car
    is plugged in Eco with no surplus yet and the budget clears 2 kWh.
