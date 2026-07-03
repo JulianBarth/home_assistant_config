@@ -869,21 +869,33 @@
         {# Dynamic discharge limit based on house load and car charging state #}
         {# Goal: House from battery, Car from grid (billed to employer) #}
         {% set car_charging = is_state('binary_sensor.car_charging_stable', 'on') %}
-        {% set battery_max_power = 6000 %} {# Confirmed 6kW for Fronius Gen24 6.0 #}
-        
+        {# % base must match the inverter's actual enforcement base (WChaMax), #}
+        {# not a hardcoded assumption — falls back to 10240 W if the register #}
+        {# is unavailable/garbage (< 1000 W). #}
+        {% set raw_max_power = states('sensor.reading_max_allowed_discharge_power') | float(default=10240) %}
+        {% set battery_max_power = raw_max_power if raw_max_power >= 1000 else 10240 %}
+
         {% if not car_charging %}
           {{ 100 }}
         {% else %}
-          {# Calculate true house load (source-independent) #}
-          {# Total load = grid_import + inverter_ac_output (all sources feeding the house) #}
-          {# House load = Total load - Wallbox #}
-          {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
-          {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
-          {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
+          {# Prefer the smoothed house-load sensor (3-min moving average) to avoid #}
+          {# feeding car-power fluctuations into the limit; fall back to the #}
+          {# instantaneous grid + ac_output - wallbox computation when unavailable. #}
+          {% set smoothed_house_load = states('sensor.house_consumption_smoothed') | float(default=-1) %}
           {% set surplus_extra_power = states('sensor.battery_surplus_discharge_power') | float(default=0) %}
-          {% set total_consumption = [grid_power, 0] | max + ac_output %}
-          {% set house_load = [total_consumption - wallbox_power, 0] | max %}
-          
+          {% if smoothed_house_load >= 0 %}
+            {% set house_load = smoothed_house_load %}
+          {% else %}
+            {# Calculate true house load (source-independent) #}
+            {# Total load = grid_import + inverter_ac_output (all sources feeding the house) #}
+            {# House load = Total load - Wallbox #}
+            {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
+            {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
+            {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
+            {% set total_consumption = [grid_power, 0] | max + ac_output %}
+            {% set house_load = [total_consumption - wallbox_power, 0] | max %}
+          {% endif %}
+
           {# Baseline covers house load only. The surplus sensor may add a small #}
           {# price-aware budget when the battery is clearly overfilled for the #}
           {# remaining night and a strong solar recovery is forecast. #}

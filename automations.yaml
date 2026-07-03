@@ -176,6 +176,13 @@
                     entity_id: input_boolean.battery_no_discharging_active
           # Fully release — no car, no charging needed
           default:
+            # Debounce: don't release limits on a brief wallbox flicker — only
+            # once car_charging_stable has actually been off for 3+ minutes.
+            # The watchdog (Fix 1) keeps re-tightening the limit in the meantime.
+            - condition: template
+              value_template: >
+                {{ is_state('binary_sensor.car_charging_stable', 'off')
+                   and (now() - states.binary_sensor.car_charging_stable.last_changed).total_seconds() > 180 }}
             - service: script.turn_on
               target:
                 entity_id: script.set_regular_charge
@@ -568,3 +575,51 @@
         message: clear_notification
         data:
           tag: tibber_pulse_outage
+
+# =============================================================================
+# DISCHARGE LIMIT WATCHDOG (Fix 1)
+# Register writes don't auto-revert and the release path can leave StorCtl=0
+# for minutes after a mode flap — re-assert the limit every minute while in
+# car_charging_only so enforcement never lapses between 5-min coordinator runs.
+# =============================================================================
+- alias: "Discharge Limit Watchdog"
+  description: "Re-assert the dynamic discharge limit every minute during car_charging_only"
+  trigger:
+    - platform: time_pattern
+      minutes: "/1"
+  condition:
+    - condition: state
+      entity_id: sensor.battery_control_mode
+      state: "car_charging_only"
+  action:
+    - service: script.turn_on
+      target:
+        entity_id: script.set_dynamic_discharge_limit
+
+- alias: "Notify when Discharge Limit Enforcement Fails"
+  description: "Alerts if the inverter's actual discharge rate drifts above the commanded limit for 5+ minutes"
+  trigger:
+    # Sustained deviation only — the `for` requires the mismatch to persist
+    # for 5 minutes, so transient oscillation between watchdog re-writes
+    # doesn't trigger false alarms.
+    - platform: template
+      value_template: >
+        {{ (states('sensor.percent_max_discharge_rte') | float(default=0)) >
+           (states('sensor.discharge_limit_percentage') | float(default=100)) + 5 }}
+      for: "00:05:00"
+  condition:
+    - condition: state
+      entity_id: sensor.battery_control_mode
+      state: "car_charging_only"
+  action:
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        title: "⚠️ Discharge Limit Not Enforced"
+        message: >-
+          Actual discharge rate {{ states('sensor.percent_max_discharge_rte') | float(0) | round(0) }}%
+          exceeds the commanded limit of
+          {{ states('sensor.discharge_limit_percentage') | float(100) | round(0) }}%
+          while in car_charging_only. Check switch.storctl_mod / register 40358.
+        data:
+          tag: battery_discharge_enforcement_failed
+          group: battery

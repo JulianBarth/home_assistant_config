@@ -254,6 +254,15 @@ sensor:
     unit_prefix: k
     round: 2
     method: left
+  # Smooth house load feeding the discharge-limit calc so car-power
+  # fluctuations don't cause the limit to swing (Fix 4)
+  - platform: filter
+    name: "House Consumption Smoothed"
+    entity_id: sensor.house_consumption
+    filters:
+      - filter: time_simple_moving_average
+        window_size: "00:03:00"
+        precision: 0
 
 # Structured algorithm logging (using command_line integration)
 command_line:
