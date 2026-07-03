@@ -471,17 +471,17 @@ views:
           - entity: input_boolean.car_smart_charging_on
             name: Smart Charging Enabled
           - entity: sensor.car_boost_energy_budget
-            name: Boost Budget
+            name: Lendable from home battery now
           - entity: binary_sensor.car_boost_viable
-            name: Boost Viable
+            name: Boost would start / keep running
           - entity: input_boolean.car_boost_active
-            name: Solar Boost Active
+            name: Solar Boost running
           - entity: binary_sensor.car_cheap_grid_window
-            name: Cheap Grid Window
+            name: Grid price cheap enough
           - entity: input_boolean.car_cheap_grid_active
-            name: Cheap Grid Active
+            name: Cheap-grid charging running
           - entity: input_boolean.car_boost_suppressed
-            name: Boost Suppressed (until replug)
+            name: Boost paused (car took no power — replug clears)
 
       # --- CAR SMART CHARGING DECISION ---
       - type: markdown
@@ -662,27 +662,54 @@ views:
         show_header_toggle: false
         entities:
           - entity: input_number.car_charging_hysteresis_minutes
-            name: Car Charging Hysteresis
+            name: Detect "car is charging" after (min)
           - type: divider
           - type: section
-            label: Solar-Backed Boost
+            label: "Solar Boost — car borrows from home battery when sun will refill it"
           - entity: input_boolean.car_smart_charging_on
-            name: Smart Charging Enabled
+            name: Enable smart car charging
           - entity: input_number.car_boost_min_soc
-            name: Battery Floor SoC (rec. 30%)
+            name: Never drain home battery below (rec. 30%)
           - entity: input_number.car_boost_min_budget_wh
-            name: Min Start Budget (rec. 2000 Wh)
+            name: Start only if ≥ this much lendable (rec. 2000 Wh)
           - entity: input_number.car_boost_solar_confidence_pct
-            name: Solar Confidence (rec. 70%)
+            name: Trust solar forecast to (rec. 70%)
           - entity: input_number.car_boost_charging_current_a
-            name: Boost Current (rec. 6 A)
+            name: Car current while boosting (rec. 6 A)
           - type: divider
           - type: section
-            label: Cheap Grid Windows
+            label: "Cheap Grid — car charges from grid when power is very cheap"
           - entity: input_number.car_cheap_grid_percentile
-            name: Start Percentile (rec. 10%)
+            name: Price among cheapest X% of next 12h (rec. 10)
           - entity: input_number.car_cheap_grid_max_price_ct
-            name: Price Ceiling (rec. 15 ct)
+            name: …and below this price (rec. 15 ct/kWh)
+
+      - type: markdown
+        title: "ℹ️ How Car Smart Charging Works"
+        content: |
+          **☀️ Solar Boost** — In Eco mode the car normally waits for live PV
+          surplus. When today's *forecast* shows the sun will refill the home
+          battery anyway, the car may **borrow** energy from it right away
+          (Wattpilot Boost, charger stays in Eco). It stops at the battery
+          floor, when the borrowed budget is spent, or when the forecast no
+          longer covers tonight's house consumption.
+
+          - **Never drain below**: hard floor for the home battery — boost
+            never pulls it under this SoC.
+          - **Lendable energy**: how much may be borrowed right now
+            (limited by floor, tonight's needs, and what the sun can refill).
+          - **Trust solar forecast**: discount applied to Solcast
+            (70% = plan with only 70% of the forecast, safety first).
+          - **Car current while boosting**: 6 A ≈ 4.1 kW, roughly what
+            battery + PV can supply without importing from grid.
+            Restored to 16 A automatically after every boost.
+
+          **💰 Cheap Grid** — When electricity is negative-priced, or both
+          among the cheapest X% of the next 12 h *and* under the absolute
+          ceiling, the wallbox temporarily switches **Eco → Default** and the
+          car charges at full power from the grid (house keeps running on
+          battery). It switches back to Eco when prices rise. If you change
+          the wallbox mode manually, the automation backs off.
 
   # =========================================================================
   # VIEW 7: DEBUG — Development and diagnostics (moved from other views)

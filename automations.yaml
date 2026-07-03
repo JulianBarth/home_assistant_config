@@ -934,10 +934,23 @@
   action:
     - delay:
         seconds: 45
+    # Restore whenever boost is (or was) in play — covers a crash in the gap
+    # between boost-off and current-restore where the flag is already cleared
+    # but the current was left lowered. Matching the boost current exactly
+    # avoids stomping a deliberate manual setting.
     - if:
-        - condition: state
-          entity_id: input_boolean.car_boost_active
-          state: "on"
+        - condition: or
+          conditions:
+            - condition: state
+              entity_id: input_boolean.car_boost_active
+              state: "on"
+            - condition: state
+              entity_id: switch.wattpilot_boost
+              state: "on"
+            - condition: template
+              value_template: >
+                {{ states('number.wattpilot_max_charging_current') | float(default=16)
+                   == states('input_number.car_boost_charging_current_a') | float(default=6) }}
       then:
         - service: switch.turn_off
           target:
