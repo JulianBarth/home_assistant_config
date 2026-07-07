@@ -219,10 +219,12 @@ input_number:
     icon: mdi:battery-arrow-down
 
   # Car smart charging parameters (recommended values in CAR_SMART_CHARGING.md —
-  # helpers start at `min` on first deploy, set them via UI once)
+  # helpers start at `min` on first deploy, so every `min` here must be a SAFE
+  # value: the 2026-07-03 deploy left min_soc at 10 and min_budget at 500, which
+  # allowed the 2026-07-07 midnight boost to run on a 500 Wh budget)
   car_boost_min_soc:
     name: Car Boost Battery Floor SoC
-    min: 10
+    min: 20
     max: 60
     step: 1
     unit_of_measurement: "%"
@@ -230,11 +232,22 @@ input_number:
 
   car_boost_min_budget_wh:
     name: Car Boost Minimum Start Budget
-    min: 500
+    min: 1000
     max: 10000
     step: 100
     unit_of_measurement: "Wh"
     icon: mdi:battery-plus-variant
+
+  # Added to the boost floor before it is written to the Wattpilot stop and used
+  # in the budget: compensates the BMS reading its SoC ~10-15 %-points too high
+  # under a ~4 kW discharge (see CAR_SMART_CHARGING.md, incident 2026-07-07)
+  car_boost_floor_margin_pct:
+    name: Car Boost Floor Load Margin
+    min: 10
+    max: 25
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:battery-alert
 
   car_boost_solar_confidence_pct:
     name: Car Boost Solar Forecast Confidence

@@ -701,7 +701,7 @@
             - service: notify.battery_log
               data:
                 message: >
-                  {"ts":"{{ now().isoformat() }}","type":"car","event":"cheap_grid_stop","price_ct":{{ (states('sensor.tibber_cached_energy_prices') | float(999) * 100) | round(2) }},"percentile":{{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(100) }},"session_wh":{{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }}}
+                  {"ts":"{{ now().isoformat() }}","type":"car","event":"cheap_grid_stop","price_ct":{{ (states('sensor.tibber_cached_energy_prices') | float(999) * 100) | round(2) }},"percentile":{{ states('sensor.tibber_energy_price_percentile_next_12_hours') | float(100) }},"connection_wh":{{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }}}
             - service: notify.mobile_app_f4gdn4ry0gpq_2
               data:
                 title: "🚗 Cheap Grid Charging Ended"
@@ -792,7 +792,7 @@
             - service: notify.battery_log
               data:
                 message: >
-                  {"ts":"{{ now().isoformat() }}","type":"car","event":"boost_stop","soc":{{ states('sensor.batterie_soc') | float(0) }},"budget_wh":{{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }},"session_wh":{{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }}}
+                  {"ts":"{{ now().isoformat() }}","type":"car","event":"boost_stop","soc":{{ states('sensor.batterie_soc') | float(0) }},"budget_wh":{{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }},"connection_wh":{{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }}}
             - service: notify.mobile_app_f4gdn4ry0gpq_2
               data:
                 title: "☀️ Car Solar Boost Ended"

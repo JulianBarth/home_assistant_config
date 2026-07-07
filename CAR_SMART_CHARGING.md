@@ -30,10 +30,20 @@ with
 - `solar_surplus = max(0, remaining_solar_today × confidence − house_consumption_until_sunset)`
 - `house_consumption_until_sunset` from the existing day/night rate + wake-hour usage-pattern helpers
 - `needed_at_sunset = reserve + overnight consumption (night rate, tomorrow's wake hour, breakfast gap) + safety margin`
-- `floor = max(car_boost_min_soc, soc_target_default + 5)`
+- `floor = max(car_boost_min_soc, soc_target_default + 5) + car_boost_floor_margin_pct`
 
-Constraint 3 makes the budget 0 in the evening/night (no sun coming today), so
-boost naturally only runs between (pre-)morning and early afternoon. Debug JSON
+The **floor load margin** exists because the BMS reports SoC ~10–15 %-points too
+high while discharging at boost power (~4 kW): on 2026-07-07 the Wattpilot stop
+fired at an indicated 20 %, but after the load dropped the resting SoC turned out
+to be 5 %. The margin is applied inside `floor_soc`, so the budget (constraint 1),
+the viability checks and the hardware stop all use the same protected value.
+
+Constraint 3 makes the budget 0 in the evening/night (no sun coming today).
+**Note:** it does *not* prevent midnight starts — Solcast's "remaining today"
+rolls over at 00:00, making the budget *largest* at midnight (observed 2026-07-04
+and 2026-07-07: boost drained the battery at 00:00 and the house then imported
+grid power all night). Starting is therefore additionally time-gated in
+`car_boost_viable`: **from 2 h before sunrise until 15:00**. Debug JSON
 with all intermediate values and a `decision_reason` lives in the sensor's
 `calculation_data` attribute (same pattern as `sensor.battery_optimization_data`).
 
@@ -41,6 +51,10 @@ with all intermediate values and a `decision_reason` lives in the sensor's
 
 - master switch `input_boolean.car_smart_charging_on` on
 - car plugged in, charging mode = **Eco**, car currently drawing < 100 W
+- car state ≠ `Complete` (a full car just flaps boost on/off until the watchdog
+  suppresses it — observed 2026-07-04 00:00)
+- time of day within the start window: **sunrise − 2 h … 15:00** (a running
+  boost is not gated and continues until its budget is spent)
 - budget ≥ `car_boost_min_budget_wh` (to start; a running boost continues until the budget is fully spent — hysteresis against flapping)
 - battery not busy (no charging/hold/manual flags), inverter data valid, SoC ≥ floor + 3 %
 - not suppressed (see watchdog)
@@ -83,8 +97,9 @@ direction for every one of them. Set the recommended values once via UI:
 | Helper | Recommended | Notes |
 |--------|-------------|-------|
 | `input_boolean.car_smart_charging_on` | on | Master switch — **off after deploy**, enable to activate |
-| `input_number.car_boost_min_soc` | 30 % | Battery floor for lending |
-| `input_number.car_boost_min_budget_wh` | 2000 Wh | Minimum budget to start a boost |
+| `input_number.car_boost_min_soc` | 30 % | Battery floor for lending (min raised to 20 after the 2026-07-07 incident — deploy-at-min left it at 10) |
+| `input_number.car_boost_floor_margin_pct` | 10 % | Added on top of the floor everywhere; compensates SoC reading high under discharge load |
+| `input_number.car_boost_min_budget_wh` | 2000 Wh | Minimum budget to start a boost (min raised to 1000 — deploy-at-min left it at 500) |
 | `input_number.car_boost_solar_confidence_pct` | 70 % | Forecast discount (covers Solcast error + losses) |
 | `input_number.car_boost_charging_current_a` | 6 A | ≈ 4.1 kW @ 3 phases — keeps draw within battery + PV capability; restored to 16 A (hardcoded) after boost |
 | `input_number.car_cheap_grid_percentile` | 10 % | Window opens at/below this percentile |
@@ -117,6 +132,10 @@ Coordinator events append JSONL lines to `/config/battery_algorithm.log` with
 `"type":"car"` and `event` ∈ `boost_start | boost_stop | boost_suppressed |
 cheap_grid_start | cheap_grid_stop`, including the full budget calculation on
 boost start. Filter with `jq 'select(.type=="car")'`.
+
+`connection_wh` in stop events is `sensor.wattpilot_connection_charged` — the
+energy charged **since the car was plugged in**, not per boost/window session
+(it was misleadingly named `session_wh` until 2026-07-07).
 
 ## Rollout
 

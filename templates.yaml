@@ -78,6 +78,15 @@
         {# because Fronius handles min SoC natively. "Cheap" is relative to the day. #}
         {% set charging_justified = target_soc > default_min %}
 
+        {# Reserve recovery: the Fronius native reserve sits at ~5 %, far below #}
+        {# soc_target_default. After the 2026-07-07 boost overshoot the battery sat #}
+        {# at 6-7 % for six hours because every price decision said "not profitable". #}
+        {# Below default − 5 % the reserve is genuinely breached — recharge to the #}
+        {# default regardless of profitability (should_stop_charging ends the cycle #}
+        {# once computed_target is reached). Deliberately does not require valid #}
+        {# price data: this is a protection action, not an optimization. #}
+        {% set emergency_reserve = current_soc < (default_min - 500) %}
+
         {# Check if car is charging - don't interfere with car protection #}
         {% set car_is_charging = is_state('sensor.wattpilot_carconnected', 'charging') %}
         {% set wallbox_not_eco = not is_state('select.wattpilot_charging_mode', 'Eco') %}
@@ -87,7 +96,7 @@
         {% set basic_conditions = price_data_valid and (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive and charging_justified %}
         {% set car_safe = not (car_is_charging and wallbox_not_eco and not car_protection_active) %}
 
-        {{ basic_conditions and car_safe }}
+        {{ (basic_conditions or (emergency_reserve and automation_on and charging_inactive)) and car_safe }}
         {% endif %}
 
     - name: "Should Stop Charging"
@@ -961,16 +970,17 @@
         {% set charging_state = states('sensor.charging_state') %}
         {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
         {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
-        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
-        
-        {# Estimate battery power based on energy balance #}
+
+        {# Estimate battery power from the inverter-side balance only: the battery #}
+        {# sits behind the inverter, so charge power = DC solar minus AC output    #}
+        {# (negative AC output = inverter drawing from the grid to charge).        #}
+        {# Grid/house/wallbox flows are on the meter side and must NOT enter this  #}
+        {# balance — the old formula added grid_power, overcounting by the house   #}
+        {# load (log 2026-07-07 01:30: 1299 W computed vs ~500 W true) and showing #}
+        {# phantom +5 kW while the car charged on 2026-07-06 15:30.                #}
         {# Positive = charging, Negative = discharging #}
-        {% if charging_state == 'CHARGING' %}
-          {% set battery_power = (grid_power + solar_power - ac_output) | abs %}
-          {{ battery_power | round(0) }}
-        {% elif charging_state == 'DISCHARGING' %}
-          {% set battery_power = -(ac_output - solar_power - grid_power) %}
-          {{ battery_power | round(0) }}
+        {% if charging_state in ['CHARGING', 'DISCHARGING'] %}
+          {{ (solar_power - ac_output) | round(0) }}
         {% else %}
           0
         {% endif %}
@@ -1724,7 +1734,12 @@
         {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
         {% set soc = states('sensor.batterie_soc') | float(default=0) %}
         {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
-        {% set floor_soc = [states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max %}
+        {# Load margin: under a ~4 kW boost discharge the BMS SoC reads ~10-15 %- #}
+        {# points high — on 2026-07-07 the hardware stop fired at an indicated 20 % #}
+        {# but the resting SoC turned out to be 5 %. The floor used for the budget #}
+        {# and the Wattpilot stop therefore carries this margin on top. #}
+        {% set load_margin = states('input_number.car_boost_floor_margin_pct') | float(default=10) %}
+        {% set floor_soc = ([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin %}
         {% set confidence = states('input_number.car_boost_solar_confidence_pct') | float(default=70) / 100 %}
         {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
         {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
@@ -1773,12 +1788,14 @@
       attributes:
         floor_soc: >
           {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
-          {{ [states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max | round(0) }}
+          {% set load_margin = states('input_number.car_boost_floor_margin_pct') | float(default=10) %}
+          {{ (([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin) | round(0) }}
         calculation_data: >
           {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
           {% set soc = states('sensor.batterie_soc') | float(default=0) %}
           {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
-          {% set floor_soc = [states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max %}
+          {% set load_margin = states('input_number.car_boost_floor_margin_pct') | float(default=10) %}
+          {% set floor_soc = ([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin %}
           {% set confidence = states('input_number.car_boost_solar_confidence_pct') | float(default=70) / 100 %}
           {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
           {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
@@ -1861,6 +1878,22 @@
         {% set min_budget = states('input_number.car_boost_min_budget_wh') | float(default=2000) %}
         {% set boost_running = is_state('input_boolean.car_boost_active', 'on') %}
 
+        {# Time gate for STARTING a boost. The Solcast "remaining today" forecast #}
+        {# rolls over at midnight, so the budget is largest at 00:00 — on 2026-07-07 #}
+        {# that started a boost at midnight, drained the battery to the floor and #}
+        {# left the house importing grid power all night. Lending is only useful #}
+        {# shortly before/while the sun can refill it: from 2 h before sunrise #}
+        {# until early afternoon. A running boost is NOT gated — it continues #}
+        {# until its budget is spent. #}
+        {% set nr = as_datetime(state_attr('sun.sun', 'next_rising')) | as_local %}
+        {% set sunrise_hour = nr.hour + (nr.minute / 60) %}
+        {% set current_hour = now().hour + (now().minute / 60) %}
+        {% set in_start_window = (current_hour >= sunrise_hour - 2.0) and (current_hour < 15.0) %}
+
+        {# A car reporting "Complete" cannot take energy — starting anyway just #}
+        {# flaps boost on/off until the no-power watchdog suppresses it (2026-07-04). #}
+        {% set car_can_charge = states('sensor.wattpilot_carstate') != 'Complete' %}
+
         {% if boost_running %}
           {# Keep viable while running until the budget is truly gone — the #}
           {# min_budget threshold only gates STARTING a boost (hysteresis). #}
@@ -1868,7 +1901,8 @@
              and soc > floor_soc and budget > 0 }}
         {% else %}
           {{ master and plugged and eco_mode and not suppressed and data_valid
-             and not battery_busy and soc >= (floor_soc + 3) and budget >= min_budget }}
+             and not battery_busy and soc >= (floor_soc + 3) and budget >= min_budget
+             and in_start_window and car_can_charge }}
         {% endif %}
 
     - name: "Car Cheap Grid Window"

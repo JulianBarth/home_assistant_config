@@ -670,6 +670,8 @@ views:
             name: Enable smart car charging
           - entity: input_number.car_boost_min_soc
             name: Never drain home battery below (rec. 30%)
+          - entity: input_number.car_boost_floor_margin_pct
+            name: Extra stop margin, SoC reads high under load (rec. 10%)
           - entity: input_number.car_boost_min_budget_wh
             name: Start only if ≥ this much lendable (rec. 2000 Wh)
           - entity: input_number.car_boost_solar_confidence_pct
