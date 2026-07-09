@@ -511,6 +511,7 @@
     - name: "Computed Target SoC"
       unique_id: computed_target_soc
       unit_of_measurement: "%"
+      state_class: measurement
       icon: mdi:battery-charging-wireless
       state: >
         {{ states('sensor.battery_optimization_data') | float(default=15) }}
@@ -873,6 +874,7 @@
     - name: "Discharge Limit Percentage"
       unique_id: discharge_limit_percentage
       unit_of_measurement: "%"
+      state_class: measurement
       icon: mdi:battery-arrow-down
       state: >
         {# Dynamic discharge limit based on house load and car charging state #}
@@ -1729,6 +1731,7 @@
     - name: "Car Boost Energy Budget"
       unique_id: car_boost_energy_budget_wh
       unit_of_measurement: "Wh"
+      state_class: measurement
       icon: mdi:car-electric-outline
       state: >
         {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
@@ -1929,3 +1932,113 @@
         {% else %}
           {{ percentile <= start_pct and price_ct <= ceiling_ct }}
         {% endif %}
+
+# ============================================================================
+# Battery Charge Cycle Tracker — outcome measurement ("is this saving money?")
+# Samples energy charged every 15 min while a charge cycle runs and prices it
+# at the live tariff; in parallel it prices the same energy at today's average
+# ("what buying it whenever would have cost"). The difference is the saving.
+# All state lives in the `data` attribute (single JSON blob so the whole
+# accumulation logic exists exactly once); monthly totals reset on rollover.
+# Feeds the dashboard savings tile and the charge_cycle_summary log line.
+# ============================================================================
+- trigger:
+    - platform: state
+      entity_id: input_boolean.battery_charging_active
+      to: "on"
+      id: start
+    - platform: state
+      entity_id: input_boolean.battery_charging_active
+      from: "on"
+      to: "off"
+      id: stop
+    - platform: time_pattern
+      minutes: "/15"
+      id: tick
+  sensor:
+    - name: "Battery Charge Cycle Tracker"
+      unique_id: battery_charge_cycle_tracker
+      unit_of_measurement: "EUR"
+      icon: mdi:piggy-bank-outline
+      state: >
+        {# Month saved so far. Reads the previous data blob — lags one update, #}
+        {# catches up on the next 15-min tick. #}
+        {% set d = this.attributes.get('data', {}) if this is defined else {} %}
+        {% if d is not mapping %}{% set d = {} %}{% endif %}
+        {{ ((d.get('month_counterfactual_eur', 0) | float(0)) - (d.get('month_cost_eur', 0) | float(0))) | round(2) }}
+      attributes:
+        data: >
+          {% set d = this.attributes.get('data', {}) if this is defined else {} %}
+          {% if d is not mapping %}{% set d = {} %}{% endif %}
+          {% set energy = states('sensor.battery_charge_energy') | float(default=-1) %}
+          {% set price = states('sensor.tibber_cached_energy_prices') | float(default=-999) %}
+          {% set today = state_attr('sensor.tibber_cached_energy_prices', 'today') or [] %}
+          {% set day_avg = ((today | map(attribute='total') | sum) / (today | length)) if today | length > 0 else price %}
+          {% set month_key = now().strftime('%Y-%m') %}
+          {# Month rollover: reset totals when the stored month differs #}
+          {% set same_month = d.get('month', '') == month_key %}
+          {% set m_kwh = d.get('month_kwh', 0) | float(0) if same_month else 0 %}
+          {% set m_cost = d.get('month_cost_eur', 0) | float(0) if same_month else 0 %}
+          {% set m_cf = d.get('month_counterfactual_eur', 0) | float(0) if same_month else 0 %}
+          {% set m_cycles = d.get('month_cycles', 0) | int(0) if same_month else 0 %}
+          {% set active = d.get('cycle_active', false) %}
+          {% set c_kwh = d.get('cycle_kwh', 0) | float(0) %}
+          {% set c_cost = d.get('cycle_cost_eur', 0) | float(0) %}
+          {% set c_cf = d.get('cycle_counterfactual_eur', 0) | float(0) %}
+          {% set last_energy = d.get('cycle_last_energy_kwh', -1) | float(-1) %}
+          {% set last_cycle = d.get('last_cycle', {}) %}
+          {% set trig = trigger.id | default('none') %}
+
+          {% if trig == 'start' %}
+            {% set active = true %}
+            {% set c_kwh = 0 %}{% set c_cost = 0 %}{% set c_cf = 0 %}
+            {% set last_energy = energy %}
+            {% set cycle_start = now().isoformat() %}
+          {% else %}
+            {% set cycle_start = d.get('cycle_start', 'unknown') %}
+          {% endif %}
+
+          {% if trig in ['tick', 'stop'] and active %}
+            {# Accumulate since last sample; guard against unavailable readings #}
+            {% if energy >= 0 and last_energy >= 0 and price > -999 %}
+              {% set delta = [energy - last_energy, 0] | max %}
+              {% set c_kwh = c_kwh + delta %}
+              {% set c_cost = c_cost + (delta * price) %}
+              {% set c_cf = c_cf + (delta * day_avg) %}
+            {% endif %}
+            {% if energy >= 0 %}{% set last_energy = energy %}{% endif %}
+          {% endif %}
+
+          {% if trig == 'stop' and active %}
+            {% set active = false %}
+            {% set m_kwh = m_kwh + c_kwh %}
+            {% set m_cost = m_cost + c_cost %}
+            {% set m_cf = m_cf + c_cf %}
+            {% set m_cycles = m_cycles + 1 %}
+            {% set last_cycle = dict(
+                 started = cycle_start,
+                 ended = now().isoformat(),
+                 kwh = c_kwh | round(2),
+                 cost_eur = c_cost | round(3),
+                 counterfactual_eur = c_cf | round(3),
+                 saved_eur = (c_cf - c_cost) | round(3),
+                 avg_price_ct = ((c_cost / c_kwh * 100) if c_kwh > 0 else 0) | round(2),
+                 day_avg_ct = (day_avg * 100) | round(2)
+               ) %}
+          {% endif %}
+
+          {{ dict(
+               month = month_key,
+               month_kwh = m_kwh | round(2),
+               month_cost_eur = m_cost | round(3),
+               month_counterfactual_eur = m_cf | round(3),
+               month_saved_eur = (m_cf - m_cost) | round(3),
+               month_cycles = m_cycles,
+               cycle_active = active,
+               cycle_start = cycle_start,
+               cycle_kwh = c_kwh | round(2),
+               cycle_cost_eur = c_cost | round(3),
+               cycle_counterfactual_eur = c_cf | round(3),
+               cycle_last_energy_kwh = last_energy,
+               last_cycle = last_cycle
+             ) }}

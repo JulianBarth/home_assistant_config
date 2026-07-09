@@ -119,6 +119,108 @@ views:
           | Price Drop | {{ data.price_drop_cents }} ct |
           {% endif %}
 
+      # --- FUTURE PRICE & SOLAR (what the algorithm decides on) ---
+      # Requires the "apexcharts-card" HACS frontend plugin and the Solcast
+      # integration's detailedForecast attributes enabled.
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: "💶 Price & Solar Forecast (next 36h)"
+          show_states: false
+        graph_span: 36h
+        span:
+          start: hour
+          offset: -2h
+        now:
+          show: true
+          label: now
+        apex_config:
+          legend:
+            show: true
+        yaxis:
+          - id: price
+            decimals: 0
+            apex_config:
+              title:
+                text: ct/kWh
+          - id: solar
+            opposite: true
+            min: 0
+            decimals: 1
+            apex_config:
+              title:
+                text: kW
+        series:
+          - entity: sensor.tibber_cached_energy_prices
+            name: Price
+            yaxis_id: price
+            color: '#2196F3'
+            type: line
+            curve: stepline
+            extend_to: false
+            data_generator: |
+              const prices = (entity.attributes.today || []).concat(entity.attributes.tomorrow || []);
+              return prices.map(p => [new Date(p.startsAt).getTime(), Math.round(p.total * 10000) / 100]);
+          - entity: input_number.car_cheap_grid_max_price_ct
+            name: Cheap-grid ceiling
+            yaxis_id: price
+            color: '#4CAF50'
+            type: line
+            curve: stepline
+            stroke_width: 1
+            stroke_dash: 4
+            data_generator: |
+              const v = Number(entity.state);
+              return [[start.getTime(), v], [end.getTime(), v]];
+          - entity: sensor.solcast_pv_forecast_prognose_heute
+            name: Solar forecast
+            yaxis_id: solar
+            color: '#FFB300'
+            type: area
+            curve: smooth
+            opacity: 0.25
+            stroke_width: 1
+            data_generator: |
+              const today = entity.attributes.detailedForecast || [];
+              const tomorrowEnt = hass.states['sensor.solcast_pv_forecast_prognose_morgen'];
+              const tomorrow = (tomorrowEnt && tomorrowEnt.attributes.detailedForecast) || [];
+              return today.concat(tomorrow).map(p => [new Date(p.period_start).getTime(), p.pv_estimate]);
+
+      # --- CAR STATUS CHIP ---
+      - type: markdown
+        content: |
+          {% if is_state('input_boolean.car_cheap_grid_active', 'on') %}
+          ### 💰 Car: cheap-grid charging
+          {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(1) }} ct/kWh,
+          wallbox {{ states('sensor.wattpilot_charging_power') | float(0) | round(0) }} W — house stays on battery.
+          {% elif is_state('input_boolean.car_boost_active', 'on') %}
+          ### ☀️ Car: solar boost running
+          Lending battery energy — {{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }} Wh budget left,
+          floor {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(30) | round(0) }}%.
+          {% elif is_state('input_boolean.car_boost_suppressed', 'on') %}
+          ### ⏸️ Car: boost suppressed
+          Car took no power during the last boost — paused until replugged.
+          {% elif is_state('input_boolean.car_smart_charging_on', 'off') %}
+          ### ⏹️ Car: smart charging disabled
+          {% elif is_state('binary_sensor.wattpilot_33175380_stecker', 'on') %}
+          ### 🔌 Car: plugged in, waiting
+          Eco mode — waiting for PV surplus, a viable boost, or a cheap-grid window.
+          {% else %}
+          ### 🚗 Car: not plugged in
+          {% endif %}
+
+      # --- BOOST SUPPRESSED WARNING (prominent — silently blocks boosts) ---
+      - type: conditional
+        conditions:
+          - entity: input_boolean.car_boost_suppressed
+            state: "on"
+        card:
+          type: markdown
+          content: |
+            ## ⚠️ Car boost suppressed
+            The car drew no power for 15 min during the last boost (likely full or paused).
+            Solar boost will **not start again until the car is replugged**.
+
       # --- QUICK CONTROLS ---
       - type: entities
         title: "⚙️ Quick Controls"
@@ -142,6 +244,25 @@ views:
             name: Car Solar Boost Active
           - entity: input_boolean.car_cheap_grid_active
             name: Car Cheap Grid Active
+
+      # --- SAVINGS TILE ---
+      - type: markdown
+        title: "💶 Charging Savings"
+        content: |
+          {% set d = state_attr('sensor.battery_charge_cycle_tracker', 'data') %}
+          {% if d and d.month_cycles | default(0) > 0 %}
+          **This month:** {{ d.month_kwh }} kWh grid-charged in {{ d.month_cycles }}
+          cycle{{ 's' if d.month_cycles != 1 }} for {{ d.month_cost_eur | round(2) }} € —
+          **≈ {{ d.month_saved_eur | round(2) }} € saved** vs day-average prices.
+          {% set c = d.last_cycle %}
+          {% if c %}
+
+          Last cycle: {{ c.kwh }} kWh @ {{ c.avg_price_ct }} ct/kWh
+          (day avg {{ c.day_avg_ct }} ct) → {{ c.saved_eur | round(2) }} € saved.
+          {% endif %}
+          {% else %}
+          *No completed charge cycles this month yet.*
+          {% endif %}
 
       # --- SOC HISTORY (compact) ---
       - type: history-graph
@@ -321,6 +442,47 @@ views:
           - entity: sensor.total_solar_power
             name: Total
 
+      # --- FORECAST vs ACTUAL (calibrates the boost solar confidence) ---
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: "☀️ Forecast vs Actual (today)"
+          show_states: false
+        graph_span: 24h
+        span:
+          start: day
+        now:
+          show: true
+        apex_config:
+          legend:
+            show: true
+        yaxis:
+          - min: 0
+            decimals: 1
+            apex_config:
+              title:
+                text: kW
+        series:
+          - entity: sensor.solcast_pv_forecast_prognose_heute
+            name: Solcast forecast
+            type: area
+            color: '#FFB300'
+            opacity: 0.25
+            stroke_width: 1
+            curve: smooth
+            data_generator: |
+              return (entity.attributes.detailedForecast || []).map(p => [new Date(p.period_start).getTime(), p.pv_estimate]);
+          - entity: sensor.total_solar_power
+            name: Actual PV
+            type: line
+            color: '#FF5722'
+            stroke_width: 2
+            curve: smooth
+            group_by:
+              func: avg
+              duration: 15min
+            transform: return x / 1000;
+
       - type: entities
         title: "☀️ Solar Forecast"
         show_header_toggle: false
@@ -409,21 +571,68 @@ views:
           - entity: sensor.discharge_limit_percentage
             name: Discharge Limit
 
-      # --- PRICE vs CHARGING (48h) ---
-      - type: history-graph
-        title: "Price vs Charging Decision (48h)"
-        hours_to_show: 48
-        entities:
+      # --- PRICE vs CHARGING (48h, dual axis: ct/kWh right, % left) ---
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: "Price vs Charging Decision (48h)"
+          show_states: false
+        graph_span: 48h
+        apex_config:
+          legend:
+            show: true
+        yaxis:
+          - id: pct
+            min: 0
+            max: 100
+            decimals: 0
+            apex_config:
+              title:
+                text: "%"
+          - id: price
+            opposite: true
+            decimals: 0
+            apex_config:
+              title:
+                text: ct/kWh
+        series:
           - entity: sensor.tibber_energy_prices
-            name: Price (EUR/kWh)
-          - entity: sensor.computed_target_soc
-            name: Smart Target SoC (%)
+            name: Price
+            yaxis_id: price
+            color: '#2196F3'
+            curve: stepline
+            stroke_width: 2
+            transform: return x * 100;
           - entity: sensor.batterie_soc
-            name: Battery SoC (%)
-          - entity: binary_sensor.should_start_charging
-            name: Start Signal
+            name: Battery SoC
+            yaxis_id: pct
+            color: '#4CAF50'
+            stroke_width: 2
+          - entity: sensor.computed_target_soc
+            name: Smart Target
+            yaxis_id: pct
+            color: '#9C27B0'
+            curve: stepline
+            stroke_width: 1
+            stroke_dash: 4
           - entity: input_boolean.battery_charging_active
             name: Charging Active
+            yaxis_id: pct
+            color: '#FF9800'
+            type: area
+            curve: stepline
+            opacity: 0.15
+            stroke_width: 0
+            transform: "return x === 'on' ? 100 : 0;"
+          - entity: input_boolean.battery_no_discharging_active
+            name: Discharge Limited
+            yaxis_id: pct
+            color: '#F44336'
+            type: area
+            curve: stepline
+            opacity: 0.1
+            stroke_width: 0
+            transform: "return x === 'on' ? 100 : 0;"
 
       # --- PROFITABILITY ---
       - type: history-graph
@@ -483,37 +692,42 @@ views:
           - entity: input_boolean.car_boost_suppressed
             name: Boost paused (car took no power — replug clears)
 
-      # --- CAR SMART CHARGING DECISION ---
-      - type: markdown
-        title: "☀️ Car Boost Decision Detail"
-        content: |
-          {% set data = state_attr('sensor.car_boost_energy_budget', 'calculation_data') %}
-          {% if data %}
-          **Budget:** {{ states('sensor.car_boost_energy_budget') }} Wh &nbsp; | &nbsp;
-          **Floor:** {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') }}% &nbsp; | &nbsp;
-          **Viable:** {{ states('binary_sensor.car_boost_viable') }}
+      # --- CAR SMART CHARGING DECISION (only shown while the car is plugged in) ---
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.wattpilot_33175380_stecker
+            state: "on"
+        card:
+          type: markdown
+          title: "☀️ Car Boost Decision Detail"
+          content: |
+            {% set data = state_attr('sensor.car_boost_energy_budget', 'calculation_data') %}
+            {% if data %}
+            **Budget:** {{ states('sensor.car_boost_energy_budget') }} Wh &nbsp; | &nbsp;
+            **Floor:** {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') }}% &nbsp; | &nbsp;
+            **Viable:** {{ states('binary_sensor.car_boost_viable') }}
 
-          **Reason:** {{ data.decision_reason }}
+            **Reason:** {{ data.decision_reason }}
 
-          ### Budget Constraints (minimum wins)
-          | Constraint | Value |
-          |-----------|-------|
-          | 1 — Battery above floor | {{ data.constraint_floor_wh }} Wh |
-          | 2 — Tonight still covered | {{ data.constraint_overnight_wh }} Wh |
-          | 3 — Sun can refill the loan | {{ data.constraint_solar_wh }} Wh |
+            ### Budget Constraints (minimum wins)
+            | Constraint | Value |
+            |-----------|-------|
+            | 1 — Battery above floor | {{ data.constraint_floor_wh }} Wh |
+            | 2 — Tonight still covered | {{ data.constraint_overnight_wh }} Wh |
+            | 3 — Sun can refill the loan | {{ data.constraint_solar_wh }} Wh |
 
-          ### Inputs
-          | Parameter | Value |
-          |-----------|-------|
-          | Battery SoC | {{ data.soc }}% |
-          | Solar remaining today | {{ data.remaining_solar_wh }} Wh |
-          | Usable (× confidence) | {{ data.usable_solar_wh }} Wh |
-          | House until sunset | {{ data.house_until_sunset_wh }} Wh |
-          | Solar surplus | {{ data.solar_surplus_wh }} Wh |
-          | Needed at sunset | {{ data.needed_at_sunset_wh }} Wh |
-          {% else %}
-          *Waiting for data...*
-          {% endif %}
+            ### Inputs
+            | Parameter | Value |
+            |-----------|-------|
+            | Battery SoC | {{ data.soc }}% |
+            | Solar remaining today | {{ data.remaining_solar_wh }} Wh |
+            | Usable (× confidence) | {{ data.usable_solar_wh }} Wh |
+            | House until sunset | {{ data.house_until_sunset_wh }} Wh |
+            | Solar surplus | {{ data.solar_surplus_wh }} Wh |
+            | Needed at sunset | {{ data.needed_at_sunset_wh }} Wh |
+            {% else %}
+            *Waiting for data...*
+            {% endif %}
 
   # =========================================================================
   # VIEW 5: MONITORING — Historical graphs
