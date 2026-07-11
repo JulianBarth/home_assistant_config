@@ -1080,3 +1080,137 @@
           {% set ratio = (actual_kwh / forecast_kwh) if forecast_kwh > 0 and actual_kwh >= 0 else -1 %}
           {"schema":2,"ts":"{{ now().isoformat() }}","type":"outcome","event":"solar_forecast_vs_actual","forecast_kwh":{{ forecast_kwh | round(2) }},"actual_kwh":{{ actual_kwh | round(2) }},"actual_over_forecast":{{ ratio | round(3) }},"boost_confidence_pct":{{ states('input_number.car_boost_solar_confidence_pct') | float(70) }}}
   mode: single
+
+# =============================================================================
+# GRID OUTAGE GUARD (Inselbetrieb)
+# The GEN24 powers the whole house in an island, but the Wattpilot has no
+# island awareness: outside Eco it keeps charging from battery + PV until the
+# battery is empty or the inverter overload-trips (~3.68 kW/phase sustained).
+# On confirmed grid loss (binary_sensor.grid_available off, 1 min debounce):
+#   1. raise a running boost's Wattpilot hardware stop to the island floor
+#   2. force the wallbox back to Eco (also overrides a manually set Default)
+#   3. end any force-charge / hold / discharge-limit cycle so the battery can
+#      freely supply the house
+# Solar-backed boost stays available above the island floor
+# (input_number.car_boost_island_floor_soc) — that is the only path that can
+# still charge the car in an island, since Eco surplus detection needs the
+# (dead) Smart Meter. Recovery is declarative: once grid_available has been on
+# again for 5 min, the window/boost sensors recompute and the coordinator
+# re-enters whatever state is then appropriate.
+# =============================================================================
+- alias: "Grid Outage Guard"
+  description: "Forces a safe car/battery state during Inselbetrieb and hands back to the normal automations when the grid returns"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.grid_available
+      to: "off"
+      id: island
+    - platform: state
+      entity_id: binary_sensor.grid_available
+      from: "off"
+      to: "on"
+      id: restored
+  action:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: island
+          sequence:
+            # 1. Running boost: lift the Wattpilot's hardware stop to the
+            #    island floor (floor_soc attr is island-aware by now). If SoC
+            #    is already below it, car_boost_viable flips off and the
+            #    coordinator cleans the boost up.
+            - if:
+                - condition: state
+                  entity_id: input_boolean.car_boost_active
+                  state: "on"
+              then:
+                - service: number.set_value
+                  target:
+                    entity_id: number.wattpilot_boost_discharges_until
+                  data:
+                    value: "{{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(default=75) | round(0) }}"
+            # 2. Wallbox out of Eco (cheap grid window or manual Default):
+            #    back to Eco — in an island Default charging has no grid behind it
+            - if:
+                - condition: template
+                  value_template: "{{ not is_state('select.wattpilot_charging_mode', 'Eco') }}"
+              then:
+                - service: select.select_option
+                  target:
+                    entity_id: select.wattpilot_charging_mode
+                  data:
+                    option: "Eco"
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.car_cheap_grid_active
+            # 3. End any charge/hold/discharge-limit cycle immediately —
+            #    OutWRte/InWRte back to 100%, StorCtl off, flags cleared
+            #    (the coordinator's own release path waits minutes)
+            - if:
+                - condition: or
+                  conditions:
+                    - condition: state
+                      entity_id: input_boolean.battery_charging_active
+                      state: "on"
+                    - condition: state
+                      entity_id: input_boolean.battery_no_discharging_active
+                      state: "on"
+              then:
+                - service: script.turn_on
+                  target:
+                    entity_id: script.stop_battery_charging
+                - service: input_boolean.turn_off
+                  target:
+                    entity_id:
+                      - input_boolean.battery_no_discharging_active
+                      - input_boolean.manual_battery_charge
+            - service: notify.battery_log
+              data:
+                message: >
+                  {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"island_detected","freq_hz":{{ states('sensor.grid_frequency') | float(0) }},"meter":"{{ states('sensor.reading_energy_main_meter') }}","soc":{{ states('sensor.batterie_soc') | float(0) }},"wallbox_mode":"{{ states('select.wattpilot_charging_mode') }}","boost_active":{{ is_state('input_boolean.car_boost_active','on') | lower }}}
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                title: "🏝️ Inselbetrieb erkannt"
+                message: >-
+                  Netzausfall — Haus läuft auf Batterie/PV
+                  (SoC {{ states('sensor.batterie_soc') }}%,
+                  {{ states('sensor.grid_frequency') | float(0) | round(1) }} Hz).
+                  Wallbox auf Eco gestellt, Netzladung gesperrt. Auto-Boost nur
+                  noch oberhalb {{ states('input_number.car_boost_island_floor_soc') | float(75) | round(0) }}% SoC.
+                data:
+                  tag: grid_outage
+                  group: battery
+                  push:
+                    interruption-level: time-sensitive
+
+        - conditions:
+            - condition: trigger
+              id: restored
+          sequence:
+            # Running boost: put the hardware stop back to the normal floor
+            - if:
+                - condition: state
+                  entity_id: input_boolean.car_boost_active
+                  state: "on"
+              then:
+                - service: number.set_value
+                  target:
+                    entity_id: number.wattpilot_boost_discharges_until
+                  data:
+                    value: "{{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(default=30) | round(0) }}"
+            - service: notify.battery_log
+              data:
+                message: >
+                  {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"grid_restored","soc":{{ states('sensor.batterie_soc') | float(0) }}}
+            - service: notify.mobile_app_f4gdn4ry0gpq_2
+              data:
+                title: "🔌 Netz wieder verfügbar"
+                message: >-
+                  Stromnetz seit 5 Minuten stabil — normale Automatik aktiv
+                  (SoC {{ states('sensor.batterie_soc') }}%).
+                data:
+                  tag: grid_outage
+                  group: battery
+  mode: queued
+  max: 4

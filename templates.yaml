@@ -54,6 +54,52 @@
         {% set soc = states('sensor.reading_energy_battery_soc_scaled') %}
         {{ soc not in ['unavailable', 'unknown', 'none', 'None'] and soc | float(default=0) > 0 }}
 
+# ============================================================================
+# Grid outage detection (Inselbetrieb) — two independent signals:
+# 1. AC frequency: the GEN24 runs its backup island at ~53 Hz (grid: 49.8-50.2)
+# 2. Smart Meter loss: the meter sits on the grid side of the transfer switch
+#    and dies in an outage while the inverter registers (slave 1) stay alive.
+# grid_available = off drives the Grid Outage Guard automation and gates the
+# cheap-grid window, force-charging and discharge-limiting. Everything restores
+# declaratively once the sensor has been on again for 5 minutes.
+# ============================================================================
+- sensor:
+    - name: "Grid Frequency"
+      unique_id: grid_frequency_hz
+      unit_of_measurement: "Hz"
+      device_class: frequency
+      state_class: measurement
+      icon: mdi:sine-wave
+      state: >
+        {% set raw = states('sensor.fronius_grid_frequency_raw') | float(default=-1) %}
+        {% set sf = states('sensor.fronius_hz_sf') | float(default=-2) %}
+        {{ (raw * 10 ** sf) | round(2) }}
+      availability: >
+        {% set raw = states('sensor.fronius_grid_frequency_raw') %}
+        {% set sf = states('sensor.fronius_hz_sf') %}
+        {% set f = raw | float(default=-1) * 10 ** (sf | float(default=-2)) %}
+        {{ raw not in ['unavailable', 'unknown'] and sf not in ['unavailable', 'unknown']
+           and 40 <= f <= 70 }}
+
+- binary_sensor:
+    - name: "Grid Available"
+      unique_id: grid_available
+      device_class: power
+      icon: mdi:transmission-tower
+      # Grid loss confirmed after 1 min; grid return must hold 5 min (returns flap)
+      delay_off:
+        minutes: 1
+      delay_on:
+        minutes: 5
+      state: >
+        {% set freq = states('sensor.grid_frequency') | float(default=0) %}
+        {% set island_by_freq = (45 <= freq <= 60) and freq >= 51.5 %}
+        {% set meter_lost = states('sensor.reading_energy_main_meter') in ['unavailable', 'unknown', 'none'] %}
+        {% set island_by_meter = meter_lost and is_state('binary_sensor.inverter_data_valid', 'on') %}
+        {# Fail-open: if BOTH signals are unavailable (full Modbus outage) this #}
+        {# reads "grid ok" — that case is covered by inverter_data_valid gates. #}
+        {{ not (island_by_freq or island_by_meter) }}
+
 # Binary sensor for charging conditions
 - binary_sensor:
     - name: "Should Start Charging"
@@ -96,7 +142,11 @@
         {% set basic_conditions = price_data_valid and (current_soc < (target_soc - hysteresis_buffer)) and automation_on and charging_inactive and charging_justified %}
         {% set car_safe = not (car_is_charging and wallbox_not_eco and not car_protection_active) %}
 
-        {{ (basic_conditions or (emergency_reserve and automation_on and charging_inactive)) and car_safe }}
+        {# Island guard: no grid to charge from — a force-charge command would also #}
+        {# block discharge and starve the house (applies to the emergency path too) #}
+        {% set grid_ok = not is_state('binary_sensor.grid_available', 'off') %}
+
+        {{ (basic_conditions or (emergency_reserve and automation_on and charging_inactive)) and car_safe and grid_ok }}
         {% endif %}
 
     - name: "Should Stop Charging"
@@ -114,14 +164,19 @@
         {# Fail-safe: stop charging when inverter data goes invalid (Modbus outage) #}
         {% set inverter_data_invalid = is_state('binary_sensor.inverter_data_valid', 'off') %}
 
+        {# Fail-safe: stop charging on grid loss (Inselbetrieb) — the charge #}
+        {# command blocks discharge and would starve the island at night #}
+        {% set grid_down = is_state('binary_sensor.grid_available', 'off') %}
+
         {# Stop charging when: #}
         {# 1. Battery reaches the original target plus hysteresis OR #}
         {# 2. Battery exceeds the current computed target (respond immediately when prices increase) OR #}
-        {# 3. Inverter data is invalid — don't keep force-charging blind #}
+        {# 3. Inverter data is invalid — don't keep force-charging blind OR #}
+        {# 4. The grid is down (Inselbetrieb) #}
         {% set reached_target = current_soc >= (target_soc + hysteresis) %}
         {% set exceeds_computed_target = price_data_valid and current_soc >= computed_target_soc %}
 
-        {{ (reached_target or exceeds_computed_target or inverter_data_invalid) and charging_active }}
+        {{ (reached_target or exceeds_computed_target or inverter_data_invalid or grid_down) and charging_active }}
 
     - name: "Should Hold Battery SOC"
       unique_id: should_hold_battery_soc
@@ -139,8 +194,11 @@
         
         {# FIX: Disable hold mode if target is 100% (allows full charging) #}
         {% set target_not_full = target_soc < 9800 %}
-        
-        {{ approaching_target and target_not_full }}
+
+        {# Island guard: holding SoC limits discharge — deadly for the island #}
+        {% set grid_ok = not is_state('binary_sensor.grid_available', 'off') %}
+
+        {{ approaching_target and target_not_full and grid_ok }}
 
     - name: "Should Prevent Discharge"
       unique_id: should_prevent_discharge
@@ -155,8 +213,10 @@
         {# Scaled SoC units are % * 100 #}
         {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 100 %}
         {% set data_valid = is_state('binary_sensor.inverter_data_valid', 'on') %}
+        {# Island guard: preventing discharge cuts the house off its only supply #}
+        {% set grid_down = is_state('binary_sensor.grid_available', 'off') %}
 
-        {% if not automation_on or not charging_inactive or not data_valid %}
+        {% if not automation_on or not charging_inactive or not data_valid or grid_down %}
           {{ false }}
         {% elif current_state %}
           {# Stay ON until we exceed the target + hysteresis #}
@@ -1742,7 +1802,11 @@
         {# but the resting SoC turned out to be 5 %. The floor used for the budget #}
         {# and the Wattpilot stop therefore carries this margin on top. #}
         {% set load_margin = states('input_number.car_boost_floor_margin_pct') | float(default=10) %}
-        {% set floor_soc = ([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin %}
+        {% set normal_floor = ([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin %}
+        {# Inselbetrieb: battery is the only night supply — lend only above the island floor #}
+        {% set island = is_state('binary_sensor.grid_available', 'off') %}
+        {% set island_floor = states('input_number.car_boost_island_floor_soc') | float(default=75) %}
+        {% set floor_soc = ([normal_floor, island_floor] | max) if island else normal_floor %}
         {% set confidence = states('input_number.car_boost_solar_confidence_pct') | float(default=70) / 100 %}
         {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
         {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
@@ -1792,13 +1856,19 @@
         floor_soc: >
           {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
           {% set load_margin = states('input_number.car_boost_floor_margin_pct') | float(default=10) %}
-          {{ (([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin) | round(0) }}
+          {% set normal_floor = ([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin %}
+          {% set island = is_state('binary_sensor.grid_available', 'off') %}
+          {% set island_floor = states('input_number.car_boost_island_floor_soc') | float(default=75) %}
+          {{ (([normal_floor, island_floor] | max) if island else normal_floor) | round(0) }}
         calculation_data: >
           {% set battery_capacity = states('input_number.battery_capacity_wh') | float(default=10000) %}
           {% set soc = states('sensor.batterie_soc') | float(default=0) %}
           {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
           {% set load_margin = states('input_number.car_boost_floor_margin_pct') | float(default=10) %}
-          {% set floor_soc = ([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin %}
+          {% set normal_floor = ([states('input_number.car_boost_min_soc') | float(default=30), reserve + 5] | max) + load_margin %}
+          {% set island = is_state('binary_sensor.grid_available', 'off') %}
+          {% set island_floor = states('input_number.car_boost_island_floor_soc') | float(default=75) %}
+          {% set floor_soc = ([normal_floor, island_floor] | max) if island else normal_floor %}
           {% set confidence = states('input_number.car_boost_solar_confidence_pct') | float(default=70) / 100 %}
           {% set day_rate = states('input_number.day_consumption_rate_wh') | float(default=850) %}
           {% set night_rate = states('input_number.night_consumption_rate_wh') | float(default=280) %}
@@ -1915,13 +1985,17 @@
         {% set master = is_state('input_boolean.car_smart_charging_on', 'on') %}
         {% set plugged = is_state('binary_sensor.wattpilot_33175380_stecker', 'on') %}
         {% set price_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
+        {# Island guard: "grid charges the car" needs a grid — in Inselbetrieb the #}
+        {# Default mode would drain the battery or overload-trip the inverter. #}
+        {# Cached prices stay valid during an outage, so this must be explicit. #}
+        {% set grid_ok = not is_state('binary_sensor.grid_available', 'off') %}
         {% set price_ct = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
         {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
         {% set start_pct = states('input_number.car_cheap_grid_percentile') | float(default=10) %}
         {% set ceiling_ct = states('input_number.car_cheap_grid_max_price_ct') | float(default=15) %}
         {% set currently_on = is_state('binary_sensor.car_cheap_grid_window', 'on') %}
 
-        {% if not (master and plugged and price_valid) %}
+        {% if not (master and plugged and price_valid and grid_ok) %}
           {{ false }}
         {% elif price_ct < 0 %}
           {# Negative price: always charge the car from grid #}

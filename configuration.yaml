@@ -233,6 +233,17 @@ input_number:
     unit_of_measurement: "%"
     icon: mdi:battery-30
 
+  # Boost floor while the grid is DOWN (Inselbetrieb): the battery is the only
+  # night supply, so a boost may only lend energy above this much higher floor.
+  # Helpers start at `min` on first deploy — 60 is already a safe reserve.
+  car_boost_island_floor_soc:
+    name: Car Boost Island Floor SoC
+    min: 60
+    max: 100
+    step: 5
+    unit_of_measurement: "%"
+    icon: mdi:transmission-tower-off
+
   car_boost_min_budget_wh:
     name: Car Boost Minimum Start Budget
     min: 1000

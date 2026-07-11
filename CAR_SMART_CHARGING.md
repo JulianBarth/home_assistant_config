@@ -126,6 +126,52 @@ direction for every one of them. Set the recommended values once via UI:
   Constraint 3 guarantees the two cannot both claim the same energy: boost's
   budget is zero whenever no more sun is coming today.
 
+## Grid outage / Inselbetrieb (added 2026-07-11)
+
+The GEN24 full-backup powers the whole house in an island — including HA and
+the Wattpilot. The Wattpilot itself has **no island awareness**: outside Eco it
+keeps charging from battery + PV until the battery is empty or the inverter
+overload-trips (~3.68 kW/phase sustained, battery discharge DC-limited). Eco
+surplus charging is dead in an island anyway (needs the Smart Meter, which sits
+on the grid side and loses power).
+
+**Detection** — `binary_sensor.grid_available` (off = island), from two
+independent signals, 1 min debounce for loss / 5 min for return:
+
+1. `sensor.grid_frequency` (new Modbus regs 40085/40086): the GEN24 runs its
+   island at ~53 Hz; ≥ 51.5 Hz ⇒ island. Grid never leaves 49.8–50.2 Hz.
+2. Smart Meter loss: `sensor.reading_energy_main_meter` unavailable while
+   `binary_sensor.inverter_data_valid` stays on.
+
+If the whole Modbus link is down, both signals are silent and the sensor
+fail-opens to "grid ok" — that case is already covered by the
+`inverter_data_valid` gates everywhere.
+
+**On island (Grid Outage Guard automation + template gates):**
+
+- Cheap grid window forced/held closed (`grid_ok` gate in the window sensor —
+  cached Tibber prices stay valid in an outage, so this must be explicit);
+  wallbox forced back to Eco, even if Default was set manually.
+- Boost floor jumps to `input_number.car_boost_island_floor_soc` (recommended
+  80 %, slider in 🚗 Car Charging Settings; starts at its safe min 60 on first
+  deploy): solar-backed boost remains the **only** way to charge the car in an
+  island, and only above that floor. A running boost gets its Wattpilot
+  hardware stop rewritten to the island floor immediately.
+- Battery force-charge / hold / prevent-discharge are stopped and blocked
+  (`should_start/stop_charging`, `should_hold_battery_soc`,
+  `should_prevent_discharge`): a charge command or discharge limit would starve
+  the island and trip the inverter.
+
+**Recovery is declarative:** once `grid_available` has been on again for 5
+minutes, floors and window sensors recompute and the coordinators re-enter
+whatever state is then appropriate (an open cheap window resumes by itself).
+Log events: `"type":"grid"`, `event` ∈ `island_detected | grid_restored`.
+
+**Untestable until a real outage/test:** that the meter registers actually go
+`unavailable` (vs. stale) and that the island really sits at 53 Hz. Watch
+`sensor.grid_frequency` after deploy (should read ~50.0) and verify both
+signals during the next backup-power test (main breaker off).
+
 ## Logging
 
 Coordinator events append JSONL lines to `/config/battery_algorithm.log` with

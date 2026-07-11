@@ -691,6 +691,13 @@ views:
             name: Cheap-grid charging running
           - entity: input_boolean.car_boost_suppressed
             name: Boost paused (car took no power — replug clears)
+          - type: divider
+          - type: section
+            label: "Grid / Inselbetrieb"
+          - entity: binary_sensor.grid_available
+            name: Grid available
+          - entity: sensor.grid_frequency
+            name: Grid frequency (island ≈ 53 Hz)
 
       # --- CAR SMART CHARGING DECISION (only shown while the car is plugged in) ---
       - type: conditional
@@ -886,6 +893,8 @@ views:
             name: Never drain home battery below (rec. 30%)
           - entity: input_number.car_boost_floor_margin_pct
             name: Extra stop margin, SoC reads high under load (rec. 10%)
+          - entity: input_number.car_boost_island_floor_soc
+            name: Floor during grid outage / Inselbetrieb (rec. 80%)
           - entity: input_number.car_boost_min_budget_wh
             name: Start only if ≥ this much lendable (rec. 2000 Wh)
           - entity: input_number.car_boost_solar_confidence_pct
