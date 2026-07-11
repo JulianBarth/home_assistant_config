@@ -104,14 +104,19 @@ direction for every one of them. Set the recommended values once via UI:
 | `input_number.car_boost_charging_current_a` | 6 A | ≈ 4.1 kW @ 3 phases — keeps draw within battery + PV capability; restored to 16 A (hardcoded) after boost |
 | `input_number.car_cheap_grid_percentile` | 10 % | Window opens at/below this percentile |
 | `input_number.car_cheap_grid_max_price_ct` | 15 ct | Absolute ceiling (percentile alone is misleading on expensive days) |
+| `input_number.car_boost_island_floor_soc` | 80 % | Boost floor while the grid is down (2026-07-11, § Grid outage below); set to 80 on deploy day |
 
 **Template entities** (in [templates.yaml](templates.yaml)):
 `sensor.car_boost_energy_budget` (+ `floor_soc`, `calculation_data` attributes),
-`binary_sensor.car_boost_viable`, `binary_sensor.car_cheap_grid_window`.
+`binary_sensor.car_boost_viable`, `binary_sensor.car_cheap_grid_window`,
+`sensor.grid_frequency` + `binary_sensor.grid_available` (island detection,
+2026-07-11; frequency from new Modbus register 40093 in
+[modbus.yaml](modbus.yaml)).
 
 **Automations** (in [automations.yaml](automations.yaml)):
 `Car Smart Charging Coordinator`, `Car Boost No-Power Watchdog`,
-`Car Boost Suppression Reset`, `Reset Car Smart Charging on Startup`.
+`Car Boost Suppression Reset`, `Reset Car Smart Charging on Startup`,
+`Grid Outage Guard` (2026-07-11).
 
 ## Interaction with the battery algorithm
 
@@ -179,6 +184,11 @@ Coordinator events append JSONL lines to `/config/battery_algorithm.log` with
 `"type":"car"` and `event` ∈ `boost_start | boost_stop | boost_suppressed |
 cheap_grid_start | cheap_grid_stop`, including the full budget calculation on
 boost start. Filter with `jq 'select(.type=="car")'`.
+
+The Grid Outage Guard logs `"type":"grid"` with `event` ∈
+`island_detected | grid_restored` (plus a one-off `feature_deployed` marker
+from 2026-07-11, when the guard went live — data before that line predates
+island awareness).
 
 `connection_wh` in stop events is `sensor.wattpilot_connection_charged` — the
 energy charged **since the car was plugged in**, not per boost/window session
