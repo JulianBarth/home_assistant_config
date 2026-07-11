@@ -1214,3 +1214,49 @@
                   group: battery
   mode: queued
   max: 4
+
+# Companion to the Grid Outage Guard. The 2026-07-11 breaker test showed the
+# Wattpilot reboots in the switchover gap and reconnects minutes AFTER the
+# guard's one-shot Eco command (which then hit an unavailable entity — warning
+# only). This watchdog re-enforces Eco whenever the wallbox is reachable in a
+# non-Eco mode while the island is active: on reconnect, on a manual mode
+# change, and every 5 minutes as a belt.
+- alias: "Grid Outage Wallbox Watchdog"
+  description: "Re-forces the Wattpilot to Eco if it (re)appears in a non-Eco mode during Inselbetrieb"
+  trigger:
+    - platform: state
+      entity_id: select.wattpilot_charging_mode
+    - platform: time_pattern
+      minutes: "/5"
+  condition:
+    - condition: state
+      entity_id: binary_sensor.grid_available
+      state: "off"
+    - condition: template
+      value_template: >
+        {{ states('select.wattpilot_charging_mode')
+           not in ['Eco', 'unavailable', 'unknown'] }}
+  action:
+    - service: select.select_option
+      target:
+        entity_id: select.wattpilot_charging_mode
+      data:
+        option: "Eco"
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.car_cheap_grid_active
+    - service: notify.battery_log
+      data:
+        message: >
+          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"island_wallbox_enforced","from_mode":"{{ trigger.from_state.state if trigger.platform == 'state' else 'periodic_check' }}","soc":{{ states('sensor.batterie_soc') | float(0) }}}
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        title: "🏝️ Wallbox → Eco erzwungen"
+        message: >-
+          Wallbox war während des Inselbetriebs nicht in Eco
+          (SoC {{ states('sensor.batterie_soc') }}%) — zurückgestellt.
+        data:
+          tag: grid_outage
+          group: battery
+  mode: single
+  max_exceeded: silent
