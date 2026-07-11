@@ -71,15 +71,11 @@
       state_class: measurement
       icon: mdi:sine-wave
       state: >
-        {% set raw = states('sensor.fronius_grid_frequency_raw') | float(default=-1) %}
-        {% set sf = states('sensor.fronius_hz_sf') | float(default=-2) %}
-        {{ (raw * 10 ** sf) | round(2) }}
+        {{ states('sensor.fronius_grid_frequency') | float(default=0) | round(2) }}
       availability: >
-        {% set raw = states('sensor.fronius_grid_frequency_raw') %}
-        {% set sf = states('sensor.fronius_hz_sf') %}
-        {% set f = raw | float(default=-1) * 10 ** (sf | float(default=-2)) %}
-        {{ raw not in ['unavailable', 'unknown'] and sf not in ['unavailable', 'unknown']
-           and 40 <= f <= 70 }}
+        {% set raw = states('sensor.fronius_grid_frequency') %}
+        {{ raw not in ['unavailable', 'unknown']
+           and 40 <= (raw | float(default=-1)) <= 70 }}
 
 - binary_sensor:
     - name: "Grid Available"

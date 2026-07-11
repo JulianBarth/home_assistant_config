@@ -36,22 +36,16 @@
       data_type: int16
       scan_interval: 60
       unique_id: fronius_ac_power_sf
-    # AC Frequency (Hz) from Model 103 - Register 40085 (uint16, scale factor 40086)
-    # Island detection: in Notstrom/Inselbetrieb the GEN24 runs its island at
-    # ~53 Hz (also used to curtail AC-coupled generators) — grid is 49.8-50.2 Hz
-    - name: fronius_grid_frequency_raw
+    # AC Frequency (Hz) - float32 at 40093 (SunSpec float map model 103, like
+    # the AC output at 40091). Island detection: in Notstrom/Inselbetrieb the
+    # GEN24 runs its island at ~53 Hz — the grid never leaves 49.8-50.2 Hz
+    - name: fronius_grid_frequency
       slave: 1
-      address: 40085
-      data_type: uint16
+      address: 40093
+      data_type: float32
       scan_interval: 10
-      unique_id: fronius_grid_frequency_raw
-    # Frequency Scale Factor (Hz_SF) - Register 40086 (int16)
-    - name: fronius_hz_sf
-      slave: 1
-      address: 40086
-      data_type: int16
-      scan_interval: 60
-      unique_id: fronius_hz_sf
+      unit_of_measurement: Hz
+      unique_id: fronius_grid_frequency
     - name: reading_energy_battery_soc_scaled
       slave: 1
       data_type: uint16

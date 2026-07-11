@@ -138,8 +138,9 @@ on the grid side and loses power).
 **Detection** — `binary_sensor.grid_available` (off = island), from two
 independent signals, 1 min debounce for loss / 5 min for return:
 
-1. `sensor.grid_frequency` (new Modbus regs 40085/40086): the GEN24 runs its
-   island at ~53 Hz; ≥ 51.5 Hz ⇒ island. Grid never leaves 49.8–50.2 Hz.
+1. `sensor.grid_frequency` (new Modbus reg 40093, float32 — verified live
+   50.02 Hz on 2026-07-11): the GEN24 runs its island at ~53 Hz; ≥ 51.5 Hz ⇒
+   island. Grid never leaves 49.8–50.2 Hz.
 2. Smart Meter loss: `sensor.reading_energy_main_meter` unavailable while
    `binary_sensor.inverter_data_valid` stays on.
 
