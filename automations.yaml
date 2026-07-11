@@ -1248,7 +1248,7 @@
     - service: notify.battery_log
       data:
         message: >
-          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"island_wallbox_enforced","from_mode":"{{ trigger.from_state.state if trigger.platform == 'state' else 'periodic_check' }}","soc":{{ states('sensor.batterie_soc') | float(0) }}}
+          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"island_wallbox_enforced","from_mode":"{{ trigger.from_state.state if (trigger.platform == 'state' and trigger.from_state) else 'periodic_check' }}","soc":{{ states('sensor.batterie_soc') | float(0) }}}
     - service: notify.mobile_app_f4gdn4ry0gpq_2
       data:
         title: "🏝️ Wallbox → Eco erzwungen"
@@ -1258,5 +1258,35 @@
         data:
           tag: grid_outage
           group: battery
+  mode: single
+  max_exceeded: silent
+
+# The 2026-07-11 breaker test showed the Wattpilot integration gives up after
+# a 15 s connect timeout during HA boot (custom component, no retry backoff)
+# and its entities stay unavailable until a manual config-entry reload — 13 min
+# in the test, indefinitely in a real outage. This retries the reload every
+# 5 minutes while the entities are stale. Also covers ordinary WiFi dropouts
+# of the charger. No mobile notification: recovery is silent, attempts are in
+# the battery log.
+- alias: "Wattpilot Reconnect Watchdog"
+  description: "Reloads the Wattpilot config entry when its entities have been unavailable for 5+ minutes"
+  trigger:
+    - platform: time_pattern
+      minutes: "/5"
+  condition:
+    - condition: template
+      value_template: >
+        {% set s = states.select.wattpilot_charging_mode %}
+        {{ s is not none
+           and s.state in ['unavailable', 'unknown']
+           and (now() - s.last_changed).total_seconds() > 300 }}
+  action:
+    - service: notify.battery_log
+      data:
+        message: >
+          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"wattpilot_reload_attempt","stale_minutes":{{ ((now() - states.select.wattpilot_charging_mode.last_changed).total_seconds() / 60) | round(0) }}}
+    - service: homeassistant.reload_config_entry
+      target:
+        entity_id: select.wattpilot_charging_mode
   mode: single
   max_exceeded: silent

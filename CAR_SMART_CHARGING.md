@@ -116,7 +116,8 @@ direction for every one of them. Set the recommended values once via UI:
 **Automations** (in [automations.yaml](automations.yaml)):
 `Car Smart Charging Coordinator`, `Car Boost No-Power Watchdog`,
 `Car Boost Suppression Reset`, `Reset Car Smart Charging on Startup`,
-`Grid Outage Guard` + `Grid Outage Wallbox Watchdog` (2026-07-11).
+`Grid Outage Guard` + `Grid Outage Wallbox Watchdog` +
+`Wattpilot Reconnect Watchdog` (2026-07-11).
 
 ## Interaction with the battery algorithm
 
@@ -184,8 +185,11 @@ Eco command (which hits an unavailable entity — warning only, sequence
 continues). The `Grid Outage Wallbox Watchdog` automation closes that gap: it
 re-forces Eco whenever the wallbox is reachable in a non-Eco mode while
 `grid_available` is off (on reconnect, manual change, or 5-min check). The
-Wattpilot integration may need a config-entry reload after an outage if it gave
-up retrying during the gap.
+Wattpilot integration itself gives up after a 15 s connect timeout during HA
+boot and stays dead until reloaded (13 min manual in the test) — the
+`Wattpilot Reconnect Watchdog` now reloads the config entry automatically
+every 5 min while the entities are stale (also covers ordinary charger WiFi
+dropouts).
 
 ## Logging
 
@@ -195,7 +199,8 @@ cheap_grid_start | cheap_grid_stop`, including the full budget calculation on
 boost start. Filter with `jq 'select(.type=="car")'`.
 
 The Grid Outage Guard logs `"type":"grid"` with `event` ∈
-`island_detected | grid_restored | island_wallbox_enforced` (plus a one-off
+`island_detected | grid_restored | island_wallbox_enforced |
+wattpilot_reload_attempt` (plus a one-off
 `feature_deployed` marker from 2026-07-11, when the guard went live — data
 before that line predates island awareness). The first real
 `island_detected`/`grid_restored` pair is from the 2026-07-11 breaker test.
