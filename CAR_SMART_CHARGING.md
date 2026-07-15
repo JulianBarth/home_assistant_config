@@ -172,6 +172,9 @@ fail-opens to "grid ok" — that case is already covered by the
 **Recovery is declarative:** once `grid_available` has been on again for 5
 minutes, floors and window sensors recompute and the coordinators re-enter
 whatever state is then appropriate (an open cheap window resumes by itself).
+The restore notification reports the outage duration (from
+`input_datetime.grid_outage_start`, set at island detection so it survives an
+HA reboot; the 5-min stability window is subtracted) and the battery SoC.
 Log events: `"type":"grid"`, `event` ∈ `island_detected | grid_restored`.
 
 **Verified by breaker test 2026-07-11 (09:50–09:58):** both signals confirmed —

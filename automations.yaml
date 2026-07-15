@@ -1116,6 +1116,13 @@
             - condition: trigger
               id: island
           sequence:
+            # 0. Record outage start for the duration in the restore
+            #    notification (input_datetime survives an HA reboot mid-outage)
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: input_datetime.grid_outage_start
+              data:
+                datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
             # 1. Running boost: lift the Wattpilot's hardware stop to the
             #    island floor (floor_soc attr is island-aware by now). If SoC
             #    is already below it, car_boost_viable flips off and the
@@ -1199,16 +1206,27 @@
                     entity_id: number.wattpilot_boost_discharges_until
                   data:
                     value: "{{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(default=30) | round(0) }}"
+            # Outage duration: recorded island start → now, minus the 5-min
+            # stability window (the grid was physically back that much
+            # earlier). Falls back to the sensor's off-period if the helper
+            # was never set (first restore after this deploy).
+            - variables:
+                outage_min: >
+                  {% set start_ts = as_timestamp(states('input_datetime.grid_outage_start'), default=0) %}
+                  {% set fallback = as_timestamp(trigger.from_state.last_changed, default=as_timestamp(now())) %}
+                  {% set begin = start_ts if start_ts > 0 else fallback %}
+                  {{ [((as_timestamp(now()) - begin) / 60 - 5) | round(0), 1] | max }}
             - service: notify.battery_log
               data:
                 message: >
-                  {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"grid_restored","soc":{{ states('sensor.batterie_soc') | float(0) }}}
+                  {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"grid_restored","soc":{{ states('sensor.batterie_soc') | float(0) }},"outage_min":{{ outage_min }}}
             - service: notify.mobile_app_f4gdn4ry0gpq_2
               data:
-                title: "🔌 Netz wieder verfügbar"
+                title: "🔌 Power restored"
                 message: >-
-                  Stromnetz seit 5 Minuten stabil — normale Automatik aktiv
-                  (SoC {{ states('sensor.batterie_soc') }}%).
+                  Power returned after {{ outage_min }} min of outage —
+                  battery SoC {{ states('sensor.batterie_soc') }}%.
+                  Normal automation active again.
                 data:
                   tag: grid_outage
                   group: battery

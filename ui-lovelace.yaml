@@ -698,6 +698,8 @@ views:
             name: Grid available
           - entity: sensor.grid_frequency
             name: Grid frequency (island ≈ 53 Hz)
+          - entity: input_datetime.grid_outage_start
+            name: Last outage detected
 
       # --- CAR SMART CHARGING DECISION (only shown while the car is plugged in) ---
       - type: conditional

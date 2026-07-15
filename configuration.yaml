@@ -59,6 +59,16 @@ input_boolean:
     name: Car Boost Suppressed Until Replug
     icon: mdi:car-off
 
+# Set by the Grid Outage Guard when an island is detected; survives HA
+# restarts (unlike entity last_changed) so the restore notification can
+# report the real outage duration even if HA rebooted mid-outage
+input_datetime:
+  grid_outage_start:
+    name: Grid Outage Started
+    has_date: true
+    has_time: true
+    icon: mdi:transmission-tower-off
+
 input_number:
   battery_target_soc:
     name: Battery Target SoC
