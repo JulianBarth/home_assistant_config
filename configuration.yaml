@@ -58,6 +58,13 @@ input_boolean:
   car_boost_suppressed:
     name: Car Boost Suppressed Until Replug
     icon: mdi:car-off
+  # "A boost session the user has been told about is in play." Set when a boost
+  # start notification is actually sent, cleared by the session summary — so
+  # every start notification gets exactly one matching wrap-up, and the
+  # start/stop churn in between stays silent.
+  car_boost_notified:
+    name: Car Boost Start Notification Sent
+    icon: mdi:bell-check
 
 # Set by the Grid Outage Guard when an island is detected; survives HA
 # restarts (unlike entity last_changed) so the restore notification can
@@ -68,6 +75,14 @@ input_datetime:
     has_date: true
     has_time: true
     icon: mdi:transmission-tower-off
+
+  # Throttle reference for boost start notifications (see
+  # input_number.car_boost_notify_throttle_min)
+  car_boost_last_notify:
+    name: Car Boost Last Notification
+    has_date: true
+    has_time: true
+    icon: mdi:bell-outline
 
 input_number:
   battery_target_soc:
@@ -288,6 +303,19 @@ input_number:
     step: 1
     unit_of_measurement: "A"
     icon: mdi:current-ac
+
+  # A boost can start, stop and restart several times inside one sunny hour
+  # (Eco takes over, budget dips, inverter data blips). Each cycle used to send
+  # its own start + end push. Only the first start in this window is announced;
+  # the rest of the session is silent until the wrap-up summary. Helpers start
+  # at `min` on first deploy, so `min` must already be a quiet value.
+  car_boost_notify_throttle_min:
+    name: Car Boost Notification Throttle
+    min: 60
+    max: 360
+    step: 30
+    unit_of_measurement: "min"
+    icon: mdi:bell-sleep
 
   car_cheap_grid_percentile:
     name: Car Cheap Grid Start Percentile

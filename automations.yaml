@@ -805,15 +805,10 @@
               data:
                 message: >
                   {"schema":2,"ts":"{{ now().isoformat() }}","type":"car","event":"boost_stop","soc":{{ states('sensor.batterie_soc') | float(0) }},"budget_wh":{{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }},"connection_wh":{{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }}}
-            - service: notify.mobile_app_f4gdn4ry0gpq_2
-              data:
-                title: "☀️ Car Solar Boost Ended"
-                message: >-
-                  Battery SoC {{ states('sensor.batterie_soc') }}%,
-                  remaining boost budget {{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }} Wh.
-                data:
-                  tag: car_boost
-                  group: battery
+            # No push here on purpose: a stop is usually just a pause inside an
+            # ongoing session (Eco takes over, budget dips) and the boost comes
+            # back minutes later. "Car Boost Session Summary" sends one wrap-up
+            # once the boost has actually stayed off. Every stop is still logged.
 
         # 5. Boost start: sun will refill the battery — lend energy to the car
         #    now via Wattpilot native Boost (charger stays in Eco)
@@ -864,18 +859,37 @@
               data:
                 message: >
                   {"schema":2,"ts":"{{ now().isoformat() }}","type":"car","event":"boost_start","soc":{{ states('sensor.batterie_soc') | float(0) }},"floor":{{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(30) }},"budget_wh":{{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }},"data":{{ (state_attr('sensor.car_boost_energy_budget', 'calculation_data') or {}) | to_json }}}
-            - service: notify.mobile_app_f4gdn4ry0gpq_2
-              data:
-                title: "☀️ Car Solar Boost Started"
-                message: >-
-                  Sun will refill the battery — lending
-                  {{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }} Wh
-                  to the car at {{ states('input_number.car_boost_charging_current_a') | float(6) | round(0) }} A.
-                  Battery {{ states('sensor.batterie_soc') }}% → floor
-                  {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(30) | round(0) }}%.
-                data:
-                  tag: car_boost
-                  group: battery
+            # Announce at most one start per throttle window. Within a sunny
+            # afternoon the boost can stop and restart many times; those
+            # restarts are the same session as far as the user is concerned,
+            # so they stay silent (the log keeps every one of them).
+            - if:
+                - condition: template
+                  value_template: >
+                    {% set last = as_timestamp(states('input_datetime.car_boost_last_notify'), default=0) %}
+                    {% set throttle = states('input_number.car_boost_notify_throttle_min') | float(default=60) * 60 %}
+                    {{ as_timestamp(now()) - last > throttle }}
+              then:
+                - service: input_datetime.set_datetime
+                  target:
+                    entity_id: input_datetime.car_boost_last_notify
+                  data:
+                    datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+                - service: input_boolean.turn_on
+                  target:
+                    entity_id: input_boolean.car_boost_notified
+                - service: notify.mobile_app_f4gdn4ry0gpq_2
+                  data:
+                    title: "☀️ Car Solar Boost Started"
+                    message: >-
+                      Sun will refill the battery — lending
+                      {{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }} Wh
+                      to the car at {{ states('input_number.car_boost_charging_current_a') | float(6) | round(0) }} A.
+                      Battery {{ states('sensor.batterie_soc') }}% → floor
+                      {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(30) | round(0) }}%.
+                    data:
+                      tag: car_boost
+                      group: battery
   mode: single
   max_exceeded: silent
 
@@ -911,6 +925,11 @@
     - service: input_boolean.turn_on
       target:
         entity_id: input_boolean.car_boost_suppressed
+    # This notification is the wrap-up for the session — clear the flag so the
+    # session summary doesn't send a second one 20 min later.
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.car_boost_notified
     - service: notify.battery_log
       data:
         message: >
@@ -922,6 +941,42 @@
           Boost was active but the car drew no power for 15 min
           (car state: {{ states('sensor.wattpilot_carstate') }}).
           Suppressed until the car is replugged.
+        data:
+          tag: car_boost
+          group: battery
+
+- alias: "Car Boost Session Summary"
+  description: "One wrap-up push per announced boost session, after the boost has really stayed off"
+  trigger:
+    # 20 min off = the session is over, not just pausing between cycles.
+    # A restart inside those 20 min resets the timer, so an afternoon of
+    # start/stop churn still produces exactly one summary at the end.
+    - platform: state
+      entity_id: input_boolean.car_boost_active
+      to: "off"
+      for:
+        minutes: 20
+  condition:
+    # Only wrap up a session the user was actually told about
+    - condition: state
+      entity_id: input_boolean.car_boost_notified
+      state: "on"
+  action:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.car_boost_notified
+    - service: notify.battery_log
+      data:
+        message: >
+          {"schema":2,"ts":"{{ now().isoformat() }}","type":"car","event":"boost_session_end","soc":{{ states('sensor.batterie_soc') | float(0) }},"budget_wh":{{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }},"connection_wh":{{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }}}
+    - service: notify.mobile_app_f4gdn4ry0gpq_2
+      data:
+        title: "☀️ Car Solar Boost Finished"
+        message: >-
+          Battery SoC {{ states('sensor.batterie_soc') }}%,
+          remaining boost budget {{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }} Wh.
+          {{ states('sensor.wattpilot_connection_charged') | float(0) | round(0) }} Wh
+          into the car since it was plugged in.
         data:
           tag: car_boost
           group: battery
@@ -1002,11 +1057,15 @@
             entity_id: select.wattpilot_charging_mode
           data:
             option: "Eco"
+    # car_boost_notified is cleared too: the restart already tore the boost
+    # down, so a "Finished" summary 20 min later would report a session that
+    # HA no longer knows anything about
     - service: input_boolean.turn_off
       target:
         entity_id:
           - input_boolean.car_boost_active
           - input_boolean.car_cheap_grid_active
+          - input_boolean.car_boost_notified
 
 - alias: "Notify when Discharge Limit Enforcement Fails"
   description: "Alerts if the inverter's actual discharge rate drifts above the commanded limit for 5+ minutes"

@@ -105,6 +105,7 @@ direction for every one of them. Set the recommended values once via UI:
 | `input_number.car_cheap_grid_percentile` | 10 % | Window opens at/below this percentile |
 | `input_number.car_cheap_grid_max_price_ct` | 15 ct | Absolute ceiling (percentile alone is misleading on expensive days) |
 | `input_number.car_boost_island_floor_soc` | 80 % | Boost floor while the grid is down (2026-07-11, § Grid outage below); set to 80 on deploy day |
+| `input_number.car_boost_notify_throttle_min` | 60 min | Minimum spacing between boost start pushes (§ Notifications) |
 
 **Template entities** (in [templates.yaml](templates.yaml)):
 `sensor.car_boost_energy_budget` (+ `floor_soc`, `calculation_data` attributes),
@@ -115,7 +116,8 @@ direction for every one of them. Set the recommended values once via UI:
 
 **Automations** (in [automations.yaml](automations.yaml)):
 `Car Smart Charging Coordinator`, `Car Boost No-Power Watchdog`,
-`Car Boost Suppression Reset`, `Reset Car Smart Charging on Startup`,
+`Car Boost Session Summary` (2026-07-25), `Car Boost Suppression Reset`,
+`Reset Car Smart Charging on Startup`,
 `Grid Outage Guard` + `Grid Outage Wallbox Watchdog` +
 `Wattpilot Reconnect Watchdog` (2026-07-11).
 
@@ -194,12 +196,38 @@ boot and stays dead until reloaded (13 min manual in the test) — the
 every 5 min while the entities are stale (also covers ordinary charger WiFi
 dropouts).
 
+## Notifications (reworked 2026-07-25)
+
+A boost is not one continuous block: inside a sunny afternoon it stops and
+restarts repeatedly (Eco takes over the surplus, the budget dips below the
+floor, an inverter data blip flips `car_boost_viable`). Every cycle used to
+push its own *Started* + *Ended* pair — several pushes per hour saying nothing
+new. Now:
+
+| Event | Push? |
+|-------|-------|
+| Boost start | Only if the last start push is older than `input_number.car_boost_notify_throttle_min` (60 min). Sending it sets `input_boolean.car_boost_notified`. |
+| Boost stop | Never — logged only. A stop is usually a pause, not the end. |
+| Session end | `Car Boost Session Summary`: boost off for 20 min *and* `car_boost_notified` on → one "Finished" push (SoC, remaining budget, Wh into the car since plug-in), then clears the flag. A restart inside those 20 min resets the timer. |
+| Boost suppressed | Unchanged (once per plug-in, ends the session) — it clears `car_boost_notified` so no summary follows it. |
+
+Net effect: one *Started* and one *Finished* per boost session, whatever the
+cycling underneath. The flag also makes the pairing strict — no "Finished"
+without a "Started" the user actually received. An HA restart clears the flag
+(the startup reset already tore the boost down), so a session interrupted by a
+restart gets no summary.
+
+The **churn itself is untouched** — this only changes what gets pushed. Use
+`boost_start`/`boost_stop` in the log to see how often it really cycles.
+
 ## Logging
 
 Coordinator events append JSONL lines to `/config/battery_algorithm.log` with
-`"type":"car"` and `event` ∈ `boost_start | boost_stop | boost_suppressed |
-cheap_grid_start | cheap_grid_stop`, including the full budget calculation on
-boost start. Filter with `jq 'select(.type=="car")'`.
+`"type":"car"` and `event` ∈ `boost_start | boost_stop | boost_session_end |
+boost_suppressed | cheap_grid_start | cheap_grid_stop`, including the full
+budget calculation on boost start. Filter with `jq 'select(.type=="car")'`.
+`boost_stop` is every individual stop; `boost_session_end` is the settled end
+that produced the summary push.
 
 The Grid Outage Guard logs `"type":"grid"` with `event` ∈
 `island_detected | grid_restored | island_wallbox_enforced |

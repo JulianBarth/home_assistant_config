@@ -903,6 +903,8 @@ views:
             name: Trust solar forecast to (rec. 70%)
           - entity: input_number.car_boost_charging_current_a
             name: Car current while boosting (rec. 6 A)
+          - entity: input_number.car_boost_notify_throttle_min
+            name: Quiet time between boost start alerts (rec. 60 min)
           - type: divider
           - type: section
             label: "Cheap Grid — car charges from grid when power is very cheap"
