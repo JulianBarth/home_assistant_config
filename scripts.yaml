@@ -109,13 +109,8 @@ forced_full_recharge:
   alias: "Forced Full Recharge"
   description: "Force charging at maximum power while preventing discharge"
   sequence:
-    # OutWRte - Prevent discharge (negative value: 65536 - 8000 = 57536)
-    - service: modbus.write_register
-      data:
-        hub: fronius1
-        unit: 1
-        address: 40365
-        value: 57536
+    # Raise the ceiling BEFORE requesting an 80% charge floor. This also
+    # permits returning from the 50% taper without an inverted power window.
     # InWRte - Allow maximum charge rate
     - service: modbus.write_register
       data:
@@ -123,11 +118,26 @@ forced_full_recharge:
         unit: 1
         address: 40366
         value: 10000
+    # OutWRte - Prevent discharge (negative value: 65536 - 8000 = 57536)
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40365
+        value: 57536
 
 charge_battery_reduced_rate:
   alias: "Charge Battery at Reduced Rate"
   description: "Charge at 50% power while blocking discharge - used near target SoC to prevent overshoot"
   sequence:
+    # Widen first so this also works after freeze_battery (InWRte=1%).
+    # Then lower the forced-charge floor before lowering the ceiling.
+    - service: modbus.write_register
+      data:
+        hub: fronius1
+        unit: 1
+        address: 40366
+        value: 10000
     # OutWRte - Prevent discharge (negative value: 65536 - 5000 = 60536)
     - service: modbus.write_register
       data:
@@ -343,9 +353,7 @@ stop_battery_charging:
   description: "Deactivate battery charging and restore normal behavior"
   sequence:
     # Restore regular charge/discharge behavior
-    - service: script.turn_on
-      target:
-        entity_id: script.set_regular_charge
+    - service: script.set_regular_charge
     # Disable storage control mode
     - action: switch.turn_off
       target:
@@ -393,21 +401,8 @@ charge_battery_limit_discharge:
   alias: "Charge Battery with Limited Discharge"
   description: "Force battery charging from grid while the car charges"
   sequence:
-    # OutWRte must be NEGATIVE to force charging. A positive value (old: 1000)
-    # only allowed discharge — on 2026-04-26 the battery drained 73%→66% during
-    # negative prices in this mode instead of charging.
-    - service: modbus.write_register
-      data:
-        hub: fronius1
-        unit: 1
-        address: 40365
-        value: 57536  # 65536 - 8000 = forced charge at 80% (same as forced_full_recharge)
-    - service: modbus.write_register
-      data:
-        hub: fronius1
-        unit: 1
-        address: 40366
-        value: 10000  # 100% charge rate
+    # Share the safe ceiling-before-floor transition, including after taper.
+    - service: script.forced_full_recharge
     # Enable storage control mode
     - action: switch.turn_on
       target:
@@ -444,3 +439,40 @@ set_dynamic_discharge_limit:
     - service: switch.turn_on
       target:
         entity_id: switch.StorCtl_Mod
+
+# Shared by manual, automatic and simultaneous car/home-battery charging.
+# The target helper is written synchronously by the coordinator immediately
+# before this call; do not depend on a template sensor having updated yet.
+charge_battery_to_target:
+  alias: "Charge Home Battery to Target"
+  description: "Force charging with a 50% taper below 98% targets; respect inverter safety"
+  sequence:
+    - condition: template
+      value_template: >
+        {{ is_state('binary_sensor.inverter_data_valid', 'on')
+           and not is_state('binary_sensor.grid_available', 'off')
+           and states('sensor.reading_energy_battery_soc_scaled') | float(0)
+               < states('input_number.battery_target_soc') | float(0) * 100 }}
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: >
+                {% set target = states('input_number.battery_target_soc') | float(100) %}
+                {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(0) / 100 %}
+                {% set threshold = states('input_number.battery_hold_threshold') | float(3) %}
+                {{ target < 98 and soc >= target - threshold }}
+          sequence:
+            # Out=-50%, In=+50% requests charging at 50% of WChaMax.
+            # This is a power request, not a BMS SoC limit or a battery freeze.
+            - service: script.charge_battery_reduced_rate
+      default:
+        - service: script.forced_full_recharge
+    - service: switch.turn_on
+      target:
+        entity_id: switch.storctl_mod
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.battery_charging_active
+    - service: "input_boolean.turn_{{ 'on' if is_state('binary_sensor.car_charging_stable', 'on') else 'off' }}"
+      target:
+        entity_id: input_boolean.battery_no_discharging_active

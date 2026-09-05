@@ -149,37 +149,32 @@
       unique_id: should_stop_charging
       state: >
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
-        {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
-        {% set computed_target_soc = states('sensor.computed_target_soc') | float(default=15) * 100 %}
+        {% set manual = is_state('input_boolean.manual_battery_charge', 'on') %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
-        {% set price_data_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
-
-        {# Hysteresis: multiply by 100 to convert % to scaled SoC units #}
-        {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 100 %}
-
-        {# Fail-safe: stop charging when inverter data goes invalid (Modbus outage) #}
-        {% set inverter_data_invalid = is_state('binary_sensor.inverter_data_valid', 'off') %}
-
-        {# Fail-safe: stop charging on grid loss (Inselbetrieb) — the charge #}
-        {# command blocks discharge and would starve the island at night #}
+        {% set inverter_invalid = not is_state('binary_sensor.inverter_data_valid', 'on') %}
         {% set grid_down = is_state('binary_sensor.grid_available', 'off') %}
 
-        {# Stop charging when: #}
-        {# 1. Battery reaches the original target plus hysteresis OR #}
-        {# 2. Battery exceeds the current computed target (respond immediately when prices increase) OR #}
-        {# 3. Inverter data is invalid — don't keep force-charging blind OR #}
-        {# 4. The grid is down (Inselbetrieb) #}
-        {% set reached_target = current_soc >= (target_soc + hysteresis) %}
-        {% set exceeds_computed_target = price_data_valid and current_soc >= computed_target_soc %}
-
-        {{ (reached_target or exceeds_computed_target or inverter_data_invalid or grid_down) and charging_active }}
+        {% if manual %}
+          {# Manual HOME BATTERY charge ignores prices, but ends at the user's
+             target (including requests already satisfied). Never add start
+             hysteresis to a stop target: 100% + hysteresis is unreachable. #}
+          {% set target = states('input_number.manual_charge_target_soc') | float(default=80) * 100 %}
+          {{ current_soc >= target or inverter_invalid or grid_down }}
+        {% else %}
+          {% set target = states('input_number.battery_target_soc') | float(default=100) * 100 %}
+          {% set computed = states('sensor.computed_target_soc') | float(default=15) * 100 %}
+          {% set price_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on') %}
+          {{ charging_active and (current_soc >= target
+             or (price_valid and current_soc >= computed) or inverter_invalid or grid_down) }}
+        {% endif %}
 
     - name: "Should Hold Battery SOC"
       unique_id: should_hold_battery_soc
       icon: mdi:battery-pause
       state: >
         {% set current_soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=0) %}
-        {% set target_soc = states('input_number.battery_target_soc') | float(default=100) * 100 %}
+        {% set target_entity = 'input_number.manual_charge_target_soc' if is_state('input_boolean.manual_battery_charge', 'on') else 'sensor.computed_target_soc' %}
+        {% set target_soc = states(target_entity) | float(default=100) * 100 %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
         
         {# Hold threshold: configurable range around target (default ±3%) #}

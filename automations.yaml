@@ -35,12 +35,61 @@
         - binary_sensor.should_hold_battery_soc
         - binary_sensor.should_prevent_discharge
         - sensor.computed_target_soc
+    - platform: state
+      entity_id:
+        - input_boolean.manual_battery_charge
+        - input_number.manual_charge_target_soc
+        - input_number.battery_hold_threshold
     # Fallback check every 5 minutes
     - platform: time_pattern
       minutes: "/5"
   action:
     - choose:
-        # Mode 1: Manual Charging (Highest Priority)
+        # Stop first: target completion and safety also override manual charging.
+        - conditions:
+            - condition: state
+              entity_id: binary_sensor.should_stop_charging
+              state: "on"
+          sequence:
+            # End forced charging without briefly releasing car protection.
+            - choose:
+                - conditions:
+                    - condition: state
+                      entity_id: binary_sensor.car_charging_stable
+                      state: "on"
+                    - condition: state
+                      entity_id: input_boolean.battery_automation_on
+                      state: "on"
+                    - condition: state
+                      entity_id: binary_sensor.inverter_data_valid
+                      state: "on"
+                    - condition: state
+                      entity_id: binary_sensor.grid_available
+                      state: "on"
+                  sequence:
+                    - service: script.set_dynamic_discharge_limit
+                    - service: input_boolean.turn_on
+                      target:
+                        entity_id: input_boolean.battery_no_discharging_active
+              default:
+                - service: script.stop_battery_charging
+                - service: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.battery_no_discharging_active
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.manual_battery_charge
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.battery_charging_active
+            # Reset target to default (prevents stale 100% target from previous cycle)
+            - service: input_number.set_value
+              target:
+                entity_id: input_number.battery_target_soc
+              data:
+                value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
+
+        # Mode 1: Manual HOME BATTERY charging (after stop/safety checks)
         - conditions:
             - condition: state
               entity_id: sensor.battery_control_mode
@@ -51,15 +100,7 @@
                 entity_id: input_number.battery_target_soc
               data:
                 value: "{{ states('input_number.manual_charge_target_soc') | float(default=80) }}"
-            - service: script.turn_on
-              target:
-                entity_id: script.forced_full_recharge
-            - service: switch.turn_on
-              target:
-                entity_id: switch.StorCtl_Mod
-            - service: input_boolean.turn_on
-              target:
-                entity_id: input_boolean.battery_charging_active
+            - service: script.charge_battery_to_target
 
         # Mode 2: Car + Battery Charging
         - conditions:
@@ -75,9 +116,7 @@
                 entity_id: input_number.battery_target_soc
               data:
                 value: "{{ states('sensor.computed_target_soc') | float(default=15) }}"
-            - service: script.turn_on
-              target:
-                entity_id: script.charge_battery_limit_discharge
+            - service: script.charge_battery_to_target
 
         # Mode 3: Car Charging Only (Limit Discharge)
         - conditions:
@@ -87,9 +126,10 @@
           sequence:
             # House from battery, Car from grid.
             # Limit discharge to exactly match house consumption.
-            - service: script.turn_on
+            - service: script.set_dynamic_discharge_limit
+            - service: input_boolean.turn_off
               target:
-                entity_id: script.set_dynamic_discharge_limit
+                entity_id: input_boolean.battery_charging_active
             - service: input_boolean.turn_on
               target:
                 entity_id: input_boolean.battery_no_discharging_active
@@ -108,68 +148,20 @@
                 entity_id: input_number.battery_target_soc
               data:
                 value: "{{ states('sensor.computed_target_soc') | float(default=15) }}"
-            - service: script.turn_on
-              target:
-                entity_id: script.forced_full_recharge
-            - service: switch.turn_on
-              target:
-                entity_id: switch.StorCtl_Mod
-            - service: input_boolean.turn_on
-              target:
-                entity_id: input_boolean.battery_charging_active
+            - service: script.charge_battery_to_target
 
-      # Default: Stop Charging, Hold SOC, or Normal Operation
+      # Default: Preserve reserve or return to normal self-consumption
       # NOTE: Fronius handles minimum reserve SoC — HA only manages cost optimization
       default:
         - choose:
-            # FIRST: Stop charging when target reached
-            - conditions:
-                - condition: state
-                  entity_id: binary_sensor.should_stop_charging
-                  state: "on"
-              sequence:
-                - service: script.turn_on
-                  target:
-                    entity_id: script.stop_battery_charging
-                - service: input_boolean.turn_off
-                  target:
-                    entity_id: input_boolean.manual_battery_charge
-                # Clear ALL flags — charging cycle complete
-                - service: input_boolean.turn_off
-                  target:
-                    entity_id:
-                      - input_boolean.battery_charging_active
-                      - input_boolean.battery_no_discharging_active
-                # Reset target to default (prevents stale 100% target from previous cycle)
-                - service: input_number.set_value
-                  target:
-                    entity_id: input_number.battery_target_soc
-                  data:
-                    value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
-            # SECOND: Hold SOC when approaching target during active charging
-            - conditions:
-                - condition: state
-                  entity_id: binary_sensor.should_hold_battery_soc
-                  state: "on"
-              sequence:
-                # Use reduced charge rate (50%) to approach target gradually
-                - service: script.turn_on
-                  target:
-                    entity_id: script.charge_battery_reduced_rate
-                # Set flag to indicate we're in hold/limited discharge mode
-                - service: input_boolean.turn_on
-                  target:
-                    entity_id: input_boolean.battery_no_discharging_active
-            # THIRD: Prevent discharge when at or below target SoC
+            # Prevent discharge when at or below target SoC
             - conditions:
                 - condition: state
                   entity_id: binary_sensor.should_prevent_discharge
                   state: "on"
               sequence:
                 # Limit discharge to 1% to hold SOC, allow solar charging
-                - service: script.turn_on
-                  target:
-                    entity_id: script.hold_battery_soc
+                - service: script.hold_battery_soc
                 # Set flag to indicate we're in hold/limited discharge mode
                 - service: input_boolean.turn_on
                   target:
@@ -183,9 +175,7 @@
               value_template: >
                 {{ is_state('binary_sensor.car_charging_stable', 'off')
                    and (now() - states.binary_sensor.car_charging_stable.last_changed).total_seconds() > 180 }}
-            - service: script.turn_on
-              target:
-                entity_id: script.set_regular_charge
+            - service: script.set_regular_charge
             - service: switch.turn_off
               target:
                 entity_id: switch.StorCtl_Mod
@@ -200,6 +190,8 @@
                 entity_id: input_number.battery_target_soc
               data:
                 value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
+  mode: queued
+  max: 10
 
 
 # =============================================================================

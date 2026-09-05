@@ -8,6 +8,8 @@
 !*.txt
 # Add www directory
 !www/   
+!tests/
+!tests/test_battery_control.py
 
 # Ignore specific files and directories
 .storage/
