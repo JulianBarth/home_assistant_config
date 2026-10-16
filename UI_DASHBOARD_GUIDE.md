@@ -1,248 +1,55 @@
-# Battery Management System UI Dashboard
+# Home energy dashboard
 
-## Overview Tab
+Updated 16 October 2026. The dashboard now has four primary tabs, responsive Sections layouts, and an energy-specific light/dark theme. Existing detail URLs remain valid.
 
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║  🔋 Battery Management System                                        ║
-║  Automated battery charging and discharging control                  ║
-╠══════════════════════════════════════════════════════════════════════╣
-║                                                                       ║
-║  BATTERY STATUS                                                       ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Battery State of Charge      ██████████░░░░░░░   75%        │   ║
-║  │ Charging State                CHARGING                       │   ║
-║  │ Charging Active              ⚡ ON                          │   ║
-║  │ Discharge Limited            🔒 OFF                         │   ║
-║  │ Target SoC                   ━━━━━━━━━━━━━━━━   80%        │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │                    BATTERY LEVEL GAUGE                       │   ║
-║  │                                                              │   ║
-║  │                         ┌───────┐                           │   ║
-║  │                      ╱           ╲                          │   ║
-║  │                     │      75%    │                         │   ║
-║  │                      ╲           ╱                          │   ║
-║  │                         └───────┘                           │   ║
-║  │         RED (0-20)  YELLOW (20-50)  GREEN (50-100)         │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  AUTOMATION CONTROL                                                   ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Automation Enabled           ⚙️  ON                         │   ║
-║  │ Manual Charge                🔋 OFF                         │   ║
-║  │ ───────────────────────────────────────────────────────────  │   ║
-║  │ Manual Target SoC            ━━━━━━━━━━━━━━━━   80%        │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  ENERGY PRICES (TIBBER)                                               ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Current Price                28.5 Cent/kWh                   │   ║
-║  │ Price Percentile (12h)       📊 35%                         │   ║
-║  │ Average (12h)                31.2 Cent/kWh                   │   ║
-║  │ Lowest (12h)                 24.1 Cent/kWh                   │   ║
-║  │ Lowest (24h)                 22.8 Cent/kWh                   │   ║
-║  │ Highest (24h)                42.3 Cent/kWh                   │   ║
-║  │ ───────────────────────────────────────────────────────────  │   ║
-║  │ Price is Lowest              ✗ OFF                          │   ║
-║  │ Price is Lowest (12h)        ✗ OFF                          │   ║
-║  │ Price in Bottom 25%          ✓ ON                           │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │                    PRICE HISTORY (24h)                       │   ║
-║  │  45├─────────────────────────────────────────────────────┤  │   ║
-║  │    │                           ╱╲                         │  │   ║
-║  │  35├──────────────────╱───────╱  ╲──────────────────────┤  │   ║
-║  │    │                 ╱            ╲                       │  │   ║
-║  │  25├────────╱───────╱              ╲────────╱────────────┤  │   ║
-║  │    │       ╱                          ╲    ╱             │  │   ║
-║  │  15├──────────────────────────────────╲──╱──────────────┤  │   ║
-║  │    └───────────────────────────────────────────────────┘  │   ║
-║  │     00:00    06:00    12:00    18:00    24:00             │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-╚══════════════════════════════════════════════════════════════════════╝
+## Overview
+
+The read-only summary shows battery charge, the effective manual or smart target, the current price in ct/kWh, the operating mode, and a plain-language explanation of the charging plan. Missing prices remain unavailable rather than appearing as zero.
+
+The energy-flow card shows solar, grid, battery, household, and car power. On a phone, Overview uses a compact device grid. Select a device to open its sensor details. The Energy tab retains the expanded connected diagram.
+
+Controls contain only user preferences: automatic battery charging, manual charging, and smart car charging. The manual target appears while manual charging is enabled. Operational flags such as “charging active” are read-only elsewhere in the dashboard.
+
+Alerts appear for unconfirmed grid conditions, island operation, a paused car boost, or a reported Tibber Pulse problem. The remaining cards show car status, the price/solar outlook, and estimated monthly price advantage. The price-advantage caveat still excludes storage losses, wear, and export opportunity cost.
+
+## Energy
+
+Expanded live flow, two-hour power history, and detailed source/consumer allocations. Links open Solar production and History.
+
+Solar production contains system readings, forecast-versus-actual production, recent generation, and inverter health. Solar zero is a normal state rather than a red gauge warning.
+
+## Charging
+
+Current context, battery charge versus target and price, and a separate charging-mode timeline. Car status and smart-charging decisions remain visible. Detailed calculations preserve the original bridge-period, consumption, forecast, and price analysis.
+
+Numeric power charts use kW, price charts use ct/kWh, and battery charts use %. Forecast flags and operating-state timelines remain separate from numeric series. Source colors match the flow card where practical; targets use dashed neutral lines.
+
+## Settings
+
+Settings are grouped into Battery reserve, Price rules, Household schedule, Car solar boost, Car cheap-grid charging, Solar thresholds, and System parameters. Schedule helpers retain their existing decimal-hour values, with a visible conversion explanation.
+
+System tools link to Diagnostics, Algorithm details, Manual service actions, and History. These are subviews, so they do not occupy the primary tab bar. Every one of the original 113 entity references remains available in the dashboard.
+
+Manual script rows describe their effect in a confirmation. They directly change operating settings; automatic control may subsequently override them. The redesign does not modify scripts, automation priorities, or control thresholds.
+
+## Visual system and local preview
+
+`themes/energy-calm.yaml` defines the view-specific theme. Solar is amber, grid blue, battery teal, house coral, and car violet. Warnings have separate amber treatment with readable light/dark colors. The theme is not selected globally for other dashboards.
+
+`www/energy-flow-card.js` registers both `energy-flow-card` and `energy-status-card`; no new frontend dependency is required. Historical and forecast charts use the existing ApexCharts resource.
+
+Serve this repository over localhost and open `previews/energy-flow.html`. It renders the actual custom elements with illustrative solar, evening, grid charging, idle, unavailable, island, and manual-override states. Appearance controls switch light/dark, compact/expanded, and narrow-column layouts. It does not emulate native Home Assistant controls or historical charts.
+
+## Validation and installation
+
+```sh
+node --check www/energy-flow-card.js
+node tests/test_energy_flow.cjs
+python -m unittest discover -s tests -v
 ```
 
-## Charging Logic Tab
+Python tests require `tests/requirements.txt`. They cover existing control regressions plus dashboard navigation, read-only flags, action confirmations, and unavailable-data templates.
 
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║  CHARGING DECISION LOGIC                                              ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Should Start Charging        ✓ ON                           │   ║
-║  │ Should Stop Charging         ✗ OFF                          │   ║
-║  │ Computed Target SoC          80%                            │   ║
-║  │ ───────────────────────────────────────────────────────────  │   ║
-║  │ SoC Threshold (High)         45%                            │   ║
-║  │ SoC Threshold (Low)          85%                            │   ║
-║  │ Current SoC (Normalized)     0.75                           │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  SOLAR FORECAST                                                       ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Expected Sun Low             ✓ ON                           │   ║
-║  │ Expected Sun Very Low        ✗ OFF                          │   ║
-║  │ Remaining Today              12,500 Wh                       │   ║
-║  │ Forecast Next Hours          6,800 Wh                        │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  WALLBOX (CAR CHARGING)                                               ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Car Status                   charging                        │   ║
-║  │ Charging Mode                Default                         │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-╚══════════════════════════════════════════════════════════════════════╝
-```
+Install `ui-lovelace.yaml`, `configuration.yaml`, `www/energy-flow-card.js`, and `themes/energy-calm.yaml` together, after backing up the live versions. Run `ha core check`. Reload themes/resources if available, or restart Home Assistant to register the updated resource URL. Refresh the browser afterwards.
 
-## Configuration Tab
-
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║  TARGET SOC SETTINGS                                                  ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Target (Very Low Sun)        ━━━━━━━━━━━━━━━━━━   90%      │   ║
-║  │ Target (Low Sun)             ━━━━━━━━━━         50%      │   ║
-║  │ Target (Default)             ━━━                 15%      │   ║
-║  │ SoC Hysteresis               ━                    5%      │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  SOLAR FORECAST THRESHOLDS                                            ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Low Sun Threshold            ━━━━━━━━━━━━━━━  15,000 Wh    │   ║
-║  │ Very Low Sun Threshold       ━━━━━━━━          8,000 Wh    │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  MANUAL CONTROL SCRIPTS                                               ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ 🔋 Start Charging                                           │   ║
-║  │ 🔌 Stop Charging                                            │   ║
-║  │ 🔒 Limit Discharge                                          │   ║
-║  │ 🔓 Stop Limit Discharge                                     │   ║
-║  │ ───────────────────────────────────────────────────────────  │   ║
-║  │ ⚙️  Set Regular Charge                                      │   ║
-║  │ ⚡ Force Half Recharge                                      │   ║
-║  │ ⚡⚡ Force Full Recharge                                    │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-╚══════════════════════════════════════════════════════════════════════╝
-```
-
-## Monitoring Tab
-
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║  BATTERY STATE OF CHARGE (24h)                                        ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ 100├─────────────────────────────────────────────────────┤  │   ║
-║  │    │                                                      │  │   ║
-║  │  75├──────────●─────────────────────────────────────────┤  │   ║
-║  │    │         ╱ ╲                                         │  │   ║
-║  │  50├────────╱   ╲──────────────────────●───────────────┤  │   ║
-║  │    │                              ●───╱ ╲───●           │  │   ║
-║  │  25├─────────────────────────●──╱         ╲╱           │  │   ║
-║  │    │                    ●───╱                            │  │   ║
-║  │   0├────────────────────────────────────────────────────┤  │   ║
-║  │    └───────────────────────────────────────────────────┘  │   ║
-║  │    Battery SoC ●    Target SoC ●                           │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  CHARGING STATE (24h)                                                 ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │  ON ├─────────────────────────────────────────────────────┤  │   ║
-║  │     │  ████░░░░░░░░░░░░░░░███░░░░░░░░░░░░░░░░░░░░░░░░░░  │  │   ║
-║  │ OFF ├─────────────────────────────────────────────────────┤  │   ║
-║  │     Charging Active                                          │   ║
-║  │                                                              │   ║
-║  │  ON ├─────────────────────────────────────────────────────┤  │   ║
-║  │     │  ░░░░░████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │  │   ║
-║  │ OFF ├─────────────────────────────────────────────────────┤  │   ║
-║  │     Discharge Limited                                        │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  SYSTEM HEALTH                                                        ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ Tibber Pulse Status          ✓ OK                           │   ║
-║  │                                                              │   ║
-║  │ Active Alerts:                                               │   ║
-║  │ • Battery charging notifications                             │   ║
-║  │ • Low battery alerts (< 7.5%)                                │   ║
-║  │ • Tibber Pulse connectivity issues                           │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-╚══════════════════════════════════════════════════════════════════════╝
-```
-
-## Advanced Tab
-
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║  ADVANCED MODBUS CONTROLS                                             ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ ⚙️  Set Limited Discharge                                    │   ║
-║  │ ⚙️  Half Regular Charge                                      │   ║
-║  │ ⚙️  Discharge at Half Rate                                   │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  ALL CONTROL FLAGS                                                    ║
-║  ┌─────────────────────────────────────────────────────────────┐   ║
-║  │ battery_charging_active      ⚡ ON                          │   ║
-║  │ battery_no_discharging_active 🔒 OFF                        │   ║
-║  │ battery_automation_on        ⚙️  ON                         │   ║
-║  │ manual_charging_on           🔋 OFF                         │   ║
-║  │ manual_battery_charge        🔋 OFF                         │   ║
-║  └─────────────────────────────────────────────────────────────┘   ║
-║                                                                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  SYSTEM INFORMATION                                                   ║
-║                                                                       ║
-║  Hardware Setup                                                       ║
-║  • Inverter: Fronius Gen24 6.0                                       ║
-║  • Battery: BYD Battery Pack                                         ║
-║  • Wallbox: Wattpilot                                                ║
-║  • Energy Monitor: Tibber Pulse                                      ║
-║                                                                       ║
-║  Algorithm Features                                                   ║
-║  • Dynamic SoC targeting based on solar forecast                     ║
-║  • Price-based charging optimization                                 ║
-║  • Car charging coordination                                         ║
-║  • Hysteresis to prevent charge cycling                              ║
-║                                                                       ║
-║  Documentation                                                        ║
-║  See README.md for complete setup and configuration details.         ║
-╚══════════════════════════════════════════════════════════════════════╝
-```
-
-## Dashboard Features
-
-### Key Capabilities
-1. **Real-time Monitoring**: Live battery state, charging status, and energy prices
-2. **Visual Indicators**: Gauges, graphs, and status icons for quick understanding
-3. **Control Interface**: Manual overrides and automation toggles
-4. **Historical Data**: 24-hour graphs for battery, pricing, and charging patterns
-5. **Configuration**: Adjustable thresholds and targets without editing YAML
-6. **System Health**: Alerts and sensor status monitoring
-
-### Decision Logic Transparency
-The dashboard exposes all intermediate calculations:
-- Price percentiles and averages
-- Solar forecast evaluations
-- SoC thresholds with hysteresis
-- Multi-tier charging decision logic
-
-### User Experience
-- **Overview Tab**: Quick status check - is everything working?
-- **Charging Logic Tab**: Understand why charging started/stopped
-- **Configuration Tab**: Adjust behavior to your needs
-- **Monitoring Tab**: Analyze patterns over time
-- **Advanced Tab**: Deep dive into system internals
-
-This UI provides complete visibility into the battery management system while maintaining ease of use for day-to-day monitoring.
+The custom-card preview can be inspected without logging in. Full native dashboard rendering requires an authenticated Home Assistant session; configuration validation does not replace that visual check.

@@ -36,3 +36,8 @@ diagnostics/
 !tests/test_energy_flow.cjs
 !previews/
 !previews/energy-flow.html
+
+# Dashboard theme and visual regression checks
+!themes/
+!themes/energy-calm.yaml
+!tests/test_dashboard.py

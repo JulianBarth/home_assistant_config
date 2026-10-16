@@ -1,0 +1,37 @@
+# Applied only to the energy dashboard views; supports light and dark mode.
+Energy calm:
+  primary-color: '#21866d'
+  accent-color: '#21866d'
+  ha-card-border-radius: 24px
+  ha-card-box-shadow: none
+  ha-card-border-width: 1px
+  paper-font-body1_-_font-family: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
+  graph-color-1: '#21aa86'
+  graph-color-2: '#5299de'
+  graph-color-3: '#d59619'
+  graph-color-4: '#a08ae7'
+  graph-color-5: '#ed8761'
+  graph-color-6: '#7f8b86'
+  modes:
+    light:
+      primary-background-color: '#f2f5f1'
+      secondary-background-color: '#eaf0eb'
+      card-background-color: '#ffffff'
+      ha-card-background: '#ffffff'
+      primary-text-color: '#213631'
+      secondary-text-color: '#5e7368'
+      divider-color: '#dce5de'
+      ha-card-border-color: '#dce5de'
+      energy-warning-color: '#875400'
+      energy-warning-background: '#fff0d5'
+    dark:
+      primary-background-color: '#141e1c'
+      secondary-background-color: '#192521'
+      card-background-color: '#1d2c26'
+      ha-card-background: '#1d2c26'
+      primary-text-color: '#e5eeea'
+      secondary-text-color: '#b0c1b7'
+      divider-color: '#40534a'
+      ha-card-border-color: '#40534a'
+      energy-warning-color: '#f4c76e'
+      energy-warning-background: '#493a20'

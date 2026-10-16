@@ -3,7 +3,7 @@ const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
 const assert=require('node:assert/strict');
 let Card;
-const context={HTMLElement:class{attachShadow(){this.shadowRoot={innerHTML:'',querySelectorAll:()=>[]}}},customElements:{get:()=>undefined,define:(_,c)=>Card=c},window:{},console};
+const context={HTMLElement:class{attachShadow(){this.shadowRoot={innerHTML:'',querySelectorAll:()=>[],querySelector:()=>null}}},customElements:{get:()=>undefined,define:(name,c)=>{if(name==='energy-flow-card')Card=c}},window:{},console};
 vm.runInNewContext(readFileSync('www/energy-flow-card.js','utf8'),context);
 const card=new Card();card.setConfig({});
 const ids=card.config.entities;
@@ -22,3 +22,47 @@ run();card._hass.states[ids.grid]={state:'1.5',attributes:{unit_of_measurement:'
 card._hass.states[ids.grid].state='';assert.equal(card.read('grid'),null);
 card.setConfig({title:'<img src=x onerror=alert(1)>'});assert.match(card.shadowRoot.innerHTML,/&lt;img/);
 console.log('Energy-flow scenarios passed: export, charge, discharge, idle, offline upstream, kW conversion, escaping.');
+
+// Unknown SoC must never appear as an empty battery or a healthy data state.
+html=run({soc:'unavailable'});
+assert.match(html,/charge-track unknown/);
+assert.match(html,/SoC unknown/);
+assert.match(html,/live partial/);
+assert.match(html,/Unavailable: battery SoC/);
+card.setConfig({compact:true});
+assert.match(card.shadowRoot.innerHTML,/content compact/);
+
+let StatusCard;
+context.customElements.define=(name,c)=>{if(name==='energy-status-card')StatusCard=c};
+// Re-evaluate in a fresh context to avoid redeclaring module constants.
+const statusContext={...context,customElements:{get:()=>undefined,define:(name,c)=>{if(name==='energy-status-card')StatusCard=c}}};
+vm.runInNewContext(readFileSync('www/energy-flow-card.js','utf8'),statusContext);
+const summary=new StatusCard();summary.setConfig({});
+const states={};
+for(const [id,state] of Object.entries({
+ 'sensor.batterie_soc':'74','sensor.computed_target_soc':'60',
+ 'sensor.battery_control_mode':'normal','sensor.tibber_cached_energy_prices':'0.123',
+ 'binary_sensor.tibber_cached_price_data_valid':'on','binary_sensor.grid_control_ready':'on',
+ 'sensor.grid_connection_status':'grid','input_boolean.battery_automation_on':'on',
+ 'input_boolean.manual_battery_charge':'off','input_number.manual_charge_target_soc':'85'
+}))states[id]={state,attributes:{}};
+states['sensor.tibber_cached_energy_prices'].attributes.unit_of_measurement='EUR/kWh';
+states['sensor.battery_optimization_data']={state:'60',attributes:{calculation_data:{decision_reason:'Bottom 25%: full target'}}};
+summary.hass={states};
+assert.match(summary.shadowRoot.innerHTML,/12.3 <small>ct\/kWh/);
+assert.match(summary.shadowRoot.innerHTML,/Prices are favorable/);
+states['binary_sensor.tibber_cached_price_data_valid'].state='off';summary.hass={states};
+assert.doesNotMatch(summary.shadowRoot.innerHTML,/12.3/);
+assert.match(summary.shadowRoot.innerHTML,/tag">Unavailable/);
+states['sensor.grid_connection_status'].state='island';
+states['binary_sensor.grid_control_ready'].state='off';summary.hass={states};
+assert.match(summary.shadowRoot.innerHTML,/Island operation/);
+assert.match(summary.shadowRoot.innerHTML,/Grid charging is paused/);
+states['binary_sensor.grid_control_ready'].state='on';
+states['input_boolean.manual_battery_charge'].state='on';summary.hass={states};
+assert.match(summary.shadowRoot.innerHTML,/Manual target 85%/);
+assert.match(summary.shadowRoot.innerHTML,/Your override/);
+states['input_boolean.manual_battery_charge'].state='off';
+states['sensor.battery_optimization_data'].attributes.calculation_data.decision_reason='<script>alert(1)</script>';summary.hass={states};
+assert.match(summary.shadowRoot.innerHTML,/&lt;script&gt;/);
+console.log('Summary scenarios passed: price units and validity, island operation, manual target, escaped decision.');

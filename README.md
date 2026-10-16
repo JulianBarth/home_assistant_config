@@ -66,47 +66,17 @@ The system has undergone significant improvements:
 5. Access the Battery Management dashboard from the Home Assistant sidebar for monitoring and control.
 
 ## User Interface
-The system now includes a comprehensive Lovelace dashboard (`ui-lovelace.yaml`) with the following views:
 
-**For detailed UI screenshots and usage guide, see [UI_DASHBOARD_GUIDE.md](UI_DASHBOARD_GUIDE.md)**
+The Home energy dashboard uses four primary tabs: **Overview**, **Energy**, **Charging**, and **Settings**. Responsive Sections layouts and a dedicated light/dark theme give the custom energy cards and native controls a shared appearance.
 
-### Overview
-- Real-time battery status and state of charge
-- Automation control switches
-- Current and forecasted energy prices
-- Visual gauge for battery level
+- **Overview:** battery/target/price/mode summary, a plain-language decision, compact phone energy flow, user controls, car status, price/solar outlook, and monthly price advantage.
+- **Energy:** expanded flow, recent power history, allocations, and links to Solar and History.
+- **Charging:** battery targets and prices, a separate mode timeline, and battery/car decision details.
+- **Settings:** grouped preferences plus links to Diagnostics, Algorithm details, Manual service actions, and History.
 
-### Energy Flow
-- Custom **Energy in motion** card on Overview and the dedicated Energy Flow view
-- Animated connections show solar, grid import/export, battery charge/discharge, house and car charger
-- Separate household and EV consumption, battery SoC, and Fronius/balcony generation
-- Responsive layout, theme colors, keyboard-accessible sensor details, and reduced-motion support
-- Missing upstream telemetry displays as unavailable rather than an apparently valid zero
-- Two-hour power history and the existing detailed allocation sensors remain below the diagram
+System-managed flags are read-only. Missing readings remain unavailable; partial telemetry uses warning styling, and unknown SoC is distinct from an empty battery. All original entity references remain accessible in the detail views. Automation behavior is unchanged by the visual redesign.
 
-See [ENERGY_FLOW_DESIGN.md](ENERGY_FLOW_DESIGN.md) for installation, verification and rollback. The older Sankey setup/debug guides describe the previous visualization.
-
-### Charging Logic
-- Charging decision indicators (should start/stop charging)
-- Solar forecast conditions
-- Computed target SoC based on conditions
-- Car charging status from Wallbox
-
-### Configuration
-- Adjustable SoC targets for different scenarios
-- Solar forecast threshold settings
-- Manual control scripts for testing and override
-
-### Monitoring
-- 24-hour history graphs for battery SoC
-- Charging state timeline
-- Price and solar forecast correlation
-- System health indicators
-
-### Advanced
-- Direct Modbus control scripts
-- All control flags and debugging information
-- System documentation and hardware details
+See [UI_DASHBOARD_GUIDE.md](UI_DASHBOARD_GUIDE.md) for current usage, validation, and installation. [ENERGY_FLOW_DESIGN.md](ENERGY_FLOW_DESIGN.md) documents the diagram's power conventions. The local [energy preview](previews/energy-flow.html) renders the real custom elements with illustrative scenarios.
 
 ## Getting Started
 For anyone wanting to expand or improve the project, start by focusing on:
@@ -147,4 +117,4 @@ For anyone wanting to expand or improve the project, start by focusing on:
 
 Feel free to raise issues, suggest features, or contribute improvements.
 
-*Last Updated: June 2026*
+*Last Updated: October 2026*

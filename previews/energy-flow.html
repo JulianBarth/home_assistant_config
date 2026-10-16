@@ -1,5 +1,57 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Energy flow · preview</title><style>body{margin:0;background:#f2f5f1;color:#213631;font-family:system-ui,sans-serif;padding:28px}main{max-width:1080px;margin:auto}nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}button{font:inherit;border:1px solid #d5dfd7;border-radius:20px;padding:9px 15px;background:white;color:#213631;cursor:pointer}button[aria-pressed=true]{background:#213e34;color:white}p{font-size:12px;color:#677d70}body.dark{background:#141e1c;--primary-text-color:#e5eeea;--secondary-text-color:#a6b8ae;--card-background-color:#1b2925;--divider-color:#35453e;color:#e5eeea}@media(max-width:600px){body{padding:12px}}</style><main><nav aria-label="Preview scenarios"><button data-scene="solar">Solar surplus</button><button data-scene="night">Evening</button><button data-scene="charge">Grid charging</button><button data-scene="idle">Idle</button><button data-scene="missing">Sensor offline</button><button id="theme">Light / dark</button></nav><energy-flow-card></energy-flow-card><p>Design preview · illustrative readings, not live measurements.</p><p id="details"></p></main><script src="../www/energy-flow-card.js"></script><script>
-const card=document.querySelector('energy-flow-card');card.setConfig({});
-const scenes={solar:[5400,-1800,1600,1200,800,74,4700,700],night:[0,300,-900,1200,0,42,0,0],charge:[0,7200,1400,800,5000,28,0,0],idle:[0,0,0,0,0,55,0,0],missing:['unavailable',300,0,0,0,'unavailable','unavailable',0]};
-function show(scene){const values=scenes[scene];const states={};Object.keys(ENERGY_ENTITIES).slice(0,8).forEach((key,i)=>states[ENERGY_ENTITIES[key]]={state:String(values[i]),attributes:{unit_of_measurement:i===5?'%':'W'}});states[ENERGY_ENTITIES.meter]={state:String(values[1])};states[ENERGY_ENTITIES.inverter]={state:String(values[6]==='unavailable'?'unavailable':values[6]-values[2])};states[ENERGY_ENTITIES.car_raw]={state:String(values[4])};states[ENERGY_ENTITIES.validity]={state:scene==='missing'?'off':'on'};card.hass={states};document.querySelectorAll('[data-scene]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.scene===scene));}document.querySelectorAll('[data-scene]').forEach(b=>b.onclick=()=>show(b.dataset.scene));document.querySelector('#theme').onclick=()=>document.body.classList.toggle('dark');card.addEventListener('hass-more-info',e=>document.querySelector('#details').textContent='Sensor details: '+e.detail.entityId);show('solar');
-</script></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Home energy · design preview</title>
+  <style>
+    :root{color-scheme:light;--primary-text-color:#213631;--secondary-text-color:#5e7368;--card-background-color:#fff;--divider-color:#dce5de;--ha-card-border-radius:24px;--energy-warning-color:#875400;--energy-warning-background:#fff0d5}
+    *{box-sizing:border-box}body{margin:0;background:#f2f5f1;color:var(--primary-text-color);font-family:system-ui,sans-serif;padding:28px}main{max-width:1100px;margin:auto}header{margin:28px 0 24px}h1{font-size:34px;letter-spacing:-1.2px;margin:0 0 8px;font-weight:600}p{font-size:14px;line-height:1.6;color:var(--secondary-text-color);margin:8px 0}nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}button{font:inherit;font-size:13px;min-height:44px;border:1px solid var(--divider-color);border-radius:24px;padding:9px 15px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}button[aria-pressed=true]{background:#213e34;color:white}button:focus-visible{outline:3px solid #21866d;outline-offset:3px}.cards{display:grid;gap:16px}.eyebrow{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700}.preview-label{display:inline-block;font-size:12px;padding:6px 12px;border-radius:20px;border:1px solid var(--divider-color)}#details{min-height:24px}.dark{color-scheme:dark;background:#141e1c;--primary-text-color:#e5eeea;--secondary-text-color:#b0c1b7;--card-background-color:#1d2c26;--divider-color:#40534a;--energy-warning-color:#f4c76e;--energy-warning-background:#493a20}.narrow .cards{max-width:460px}.dark button[aria-pressed=true]{background:#30634f}@media(max-width:600px){body{padding:16px 12px}header{margin:20px 4px}h1{font-size:30px}button{padding:9px 12px}.cards{gap:12px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="preview-label">Design preview · illustrative readings</div>
+  <header><p class="eyebrow">Home energy</p><h1>Your home, at a glance.</h1><p>The actual summary and energy-flow cards used in the dashboard.</p></header>
+  <nav aria-label="Preview scenarios">
+    <button data-scene="solar">Solar surplus</button><button data-scene="night">Evening</button><button data-scene="charge">Grid charging</button><button data-scene="idle">Idle</button><button data-scene="missing">Sensor offline</button><button data-scene="island">Island operation</button><button data-scene="manual">Manual charging</button>
+  </nav>
+  <nav aria-label="Preview appearance">
+    <button id="theme" aria-pressed="false">Dark mode</button><button id="compact" aria-pressed="true">Compact overview</button><button id="narrow" aria-pressed="false">Narrow column</button>
+  </nav>
+  <div class="cards"><energy-status-card></energy-status-card><energy-flow-card></energy-flow-card></div>
+  <p id="details" role="status"></p>
+  <p>Illustrative values only. Device selections show their sensor ID here. Native Home Assistant navigation, controls, and historical charts require the installed dashboard.</p>
+</main>
+<script src="../www/energy-flow-card.js?v=20261016-2"></script>
+<script>
+const card=document.querySelector('energy-flow-card');
+const summary=document.querySelector('energy-status-card');
+let compact=true;
+card.setConfig({compact});summary.setConfig({});
+const scenes={solar:[5400,-1800,1600,1200,800,74,4700,700],night:[0,300,-900,1200,0,42,0,0],charge:[0,7200,1400,800,5000,28,0,0],idle:[0,0,0,0,0,55,0,0],missing:['unavailable',300,0,0,0,'unavailable','unavailable',0],island:[3400,0,1600,1000,800,84,2700,700],manual:[0,2200,1400,800,0,28,0,0]};
+function show(scene){
+  const values=scenes[scene],states={};
+  Object.keys(ENERGY_ENTITIES).slice(0,8).forEach((key,i)=>states[ENERGY_ENTITIES[key]]={state:String(values[i]),attributes:{unit_of_measurement:i===5?'%':'W'}});
+  const set=(id,state,attributes={})=>states[id]={state:String(state),attributes};
+  set(ENERGY_ENTITIES.meter,values[1]);set(ENERGY_ENTITIES.inverter,values[6]==='unavailable'?'unavailable':values[6]-values[2]);set(ENERGY_ENTITIES.car_raw,values[4]);set(ENERGY_ENTITIES.validity,scene==='missing'?'off':'on');
+  set('sensor.computed_target_soc',60);
+  set('sensor.battery_control_mode',['charge','manual'].includes(scene)?'battery_charging':'normal');
+  set('sensor.tibber_cached_energy_prices',scene==='charge'?0.085:0.243,{unit_of_measurement:'EUR/kWh'});
+  set('binary_sensor.tibber_cached_price_data_valid',scene==='missing'?'off':'on');
+  set('binary_sensor.grid_control_ready',['missing','island'].includes(scene)?'off':'on');
+  set('sensor.grid_connection_status',scene==='island'?'island':scene==='missing'?'uncertain':'grid');
+  set('input_boolean.battery_automation_on','on');set('input_boolean.manual_battery_charge',scene==='manual'?'on':'off');set('input_number.manual_charge_target_soc',85);
+  set('sensor.battery_optimization_data',60,{calculation_data:{decision_reason:scene==='charge'?'Bottom 10%: aggressive (+20%)':'Not profitable: Buy later < Store now'}});
+  card.hass={states};summary.hass={states};
+  document.querySelectorAll('[data-scene]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.scene===scene));
+}
+document.querySelectorAll('[data-scene]').forEach(b=>b.onclick=()=>show(b.dataset.scene));
+document.querySelector('#theme').onclick=e=>{const dark=document.body.classList.toggle('dark');e.target.setAttribute('aria-pressed',dark);};
+document.querySelector('#compact').onclick=e=>{compact=!compact;card.setConfig({compact});e.target.setAttribute('aria-pressed',compact);};
+document.querySelector('#narrow').onclick=e=>{const narrow=document.body.classList.toggle('narrow');e.target.setAttribute('aria-pressed',narrow);};
+card.addEventListener('hass-more-info',e=>document.querySelector('#details').textContent='Sensor details: '+e.detail.entityId);
+show('solar');
+</script>
+</body>
+</html>

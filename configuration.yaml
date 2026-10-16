@@ -14,7 +14,7 @@ frontend:
 lovelace:
   resource_mode: yaml
   resources:
-    - url: /local/energy-flow-card.js?v=20261016-1
+    - url: /local/energy-flow-card.js?v=20261016-2
       type: module
     - url: /hacsfiles/ha-sankey-chart/ha-sankey-chart.js
       type: module
@@ -27,7 +27,7 @@ lovelace:
     energy-overview:
       mode: yaml
       filename: ui-lovelace.yaml
-      title: Overview
+      title: Home energy
       icon: mdi:view-dashboard
       show_in_sidebar: true
 

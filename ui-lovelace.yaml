@@ -2,1293 +2,2018 @@
 #
 # Copyright (c) 2024, Julian Bartholomeyczik
 # All rights reserved.
-
-# Battery Management Dashboard
-title: Battery Management System
+#
+# Home energy dashboard. Automations and entity IDs are unchanged.
+# Four primary views; linked subviews preserve detailed monitoring and service tools.
+title: Home energy
 views:
-
-  # =========================================================================
-  # VIEW 1: OVERVIEW — At-a-glance system status
-  # =========================================================================
   - title: Overview
     path: overview
     icon: mdi:view-dashboard
-    cards:
-      # --- LIVE ENERGY FLOW ---
-      - type: custom:energy-flow-card
-
-      # --- BATTERY + ALGORITHM STATUS ---
-      - type: vertical-stack
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 2
         cards:
-          - type: horizontal-stack
-            cards:
-              - type: gauge
-                entity: sensor.batterie_soc
-                name: Battery
-                min: 0
-                max: 100
-                severity:
-                  green: 50
-                  yellow: 20
-                  red: 0
-                needle: true
-              - type: gauge
-                entity: sensor.total_solar_power
-                name: Solar
-                min: 0
-                max: 7000
-                needle: true
-                severity:
-                  green: 1000
-                  yellow: 100
-                  red: 0
-
+          - type: markdown
+            content: |
+              {% set grid = states('sensor.grid_connection_status') %}
+              {% if grid != 'grid' %}
+              ### Grid control paused
+              {{ 'The house is in island operation. Grid charging is blocked.' if grid == 'island' else 'Grid conditions are not confirmed. Grid charging is paused.' }}
+              {% endif %}
+              {% if is_state('input_boolean.car_boost_suppressed', 'on') %}
+              ### Car solar boost paused
+              The car drew no power during its last boost. Reconnect the car to allow another boost.
+              {% endif %}
+              {% if is_state('binary_sensor.tibber_pulse_not_functioning', 'on') %}
+              ### Check Tibber Pulse
+              Meter telemetry needs attention. Open Settings → Diagnostics for details.
+              {% endif %}
+            visibility:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: sensor.grid_connection_status
+                    state_not: grid
+                  - condition: state
+                    entity: input_boolean.car_boost_suppressed
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.tibber_pulse_not_functioning
+                    state: 'on'
+            grid_options:
+              columns: full
+              rows: auto
+          - type: custom:energy-status-card
+            grid_options:
+              columns: full
+              rows: auto
+          - type: custom:energy-flow-card
+            compact: true
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
           - type: entities
-            title: "⚡ System Status"
+            title: Controls
             show_header_toggle: false
-            state_color: true
             entities:
-              - entity: sensor.charging_state
-                name: Battery State
-              - entity: sensor.battery_control_mode
-                name: Control Mode
-              - entity: sensor.grid_connection_status
-                name: Grid Connection
-              - entity: binary_sensor.grid_control_ready
-                name: Grid Charging Ready
-                icon: mdi:state-machine
-              - entity: sensor.computed_target_soc
-                name: Smart Target SoC
-                icon: mdi:target-account
-              - type: divider
-              - entity: sensor.tibber_energy_prices
-                name: Current Price
-              - entity: sensor.tibber_energy_price_percentile_next_12_hours
-                name: Price Percentile (12h)
-
-      # --- ALGORITHM DECISION (Transparency) ---
-      - type: markdown
-        title: "🧠 Algorithm Decision"
-        content: |
-          **Target:** {{ states('sensor.computed_target_soc') }}% &nbsp; | &nbsp;
-          **SoC:** {{ states('sensor.batterie_soc') }}% &nbsp; | &nbsp;
-          **Mode:** {{ states('sensor.battery_control_mode') }}
-
-          {% set data = state_attr('sensor.battery_optimization_data', 'calculation_data') %}
-          {% if data %}
-          **Reason:** {{ data.decision_reason }}
-
-          | Metric | Value |
-          |--------|-------|
-          | Bridge Period | {{ data.bridge_hours }}h ({{ data.bridge_type }}) |
-          | Bridge Consumption | {{ data.bridge_consumption_wh }} Wh |
-          | Solar (usable) | {{ data.usable_solar_wh }} Wh |
-          | Energy Deficit | {{ data.energy_deficit_wh }} Wh |
-          | Price Percentile | {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}% |
-          | Price Drop | {{ data.price_drop_cents }} ct |
-          {% endif %}
-
-      # --- FUTURE PRICE & SOLAR (what the algorithm decides on) ---
-      # Requires the "apexcharts-card" HACS frontend plugin and the Solcast
-      # integration's detailedForecast attributes enabled.
-      - type: custom:apexcharts-card
-        header:
-          show: true
-          title: "💶 Price & Solar Forecast (next 36h)"
-          show_states: false
-        graph_span: 36h
-        span:
-          start: hour
-          offset: -2h
-        now:
-          show: true
-          label: now
-        apex_config:
-          legend:
-            show: true
-        yaxis:
-          - id: price
-            decimals: 0
+              - entity: input_boolean.battery_automation_on
+                name: Automatic battery charging
+              - entity: input_boolean.manual_battery_charge
+                name: Manual charging
+              - entity: input_boolean.car_smart_charging_on
+                name: Smart car charging
+            grid_options:
+              columns: full
+              rows: auto
+          - type: conditional
+            conditions:
+              - entity: input_boolean.manual_battery_charge
+                state: 'on'
+            card:
+              type: entities
+              title: Manual charging target
+              show_header_toggle: false
+              entities:
+                - entity: input_number.manual_charge_target_soc
+                  name: Charge to
+            grid_options:
+              columns: full
+              rows: auto
+          - type: markdown
+            content: |
+              {% set price = states('sensor.tibber_cached_energy_prices') %}
+              {% set power = states('sensor.wattpilot_charging_power') %}
+              {% if is_state('input_boolean.car_cheap_grid_active', 'on') %}
+              **Cheap-grid charging**
+              {% if is_state('binary_sensor.tibber_cached_price_data_valid', 'on') and is_number(price) %}
+              {{ (price | float * 100) | round(1) }} ct/kWh ·
+              {% else %}
+              Price unavailable ·
+              {% endif %}
+              {{ (power | float / 1000) | round(2) ~ ' kW' if is_number(power) else 'Power unavailable' }}
+              {% elif is_state('input_boolean.car_boost_active', 'on') %}
+              **Solar boost running**
+              {% set budget = states('sensor.car_boost_energy_budget') %}
+              {{ (budget | float / 1000) | round(1) ~ ' kWh available from the home battery.' if is_number(budget) else 'Boost budget unavailable.' }}
+              {% elif is_state('input_boolean.car_boost_suppressed', 'on') %}
+              **Solar boost paused**
+              Reconnect the car to allow another boost.
+              {% elif is_state('input_boolean.car_smart_charging_on', 'off') %}
+              **Smart charging disabled**
+              {% elif is_state('binary_sensor.wattpilot_33175380_stecker', 'on') %}
+              **Connected, waiting**
+              Waiting for solar surplus, a viable boost, or a cheap-grid window.
+              {% elif is_state('binary_sensor.wattpilot_33175380_stecker', 'off') %}
+              **Car disconnected**
+              {% else %}
+              **Connection status unavailable**
+              {% endif %}
+            title: Car charging
+            grid_options:
+              columns: full
+              rows: auto
+          - type: button
+            name: Charging details
+            icon: mdi:lightning-bolt
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/charging_logic
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+          - type: button
+            name: Energy details
+            icon: mdi:transmission-tower
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/energy_flow
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Price & Solar Forecast (next 36h)
+              show_states: false
+            graph_span: 36h
+            span:
+              start: hour
+              offset: -2h
+            now:
+              show: true
+              label: now
             apex_config:
-              title:
-                text: ct/kWh
-          - id: solar
-            opposite: true
-            min: 0
-            decimals: 1
-            apex_config:
-              title:
-                text: kW
-        series:
-          - entity: sensor.tibber_cached_energy_prices
-            name: Price
-            unit: ct/kWh
-            yaxis_id: price
-            color: '#2196F3'
-            type: line
-            curve: stepline
-            extend_to: false
-            data_generator: |
-              const prices = (entity.attributes.today || []).concat(entity.attributes.tomorrow || []);
-              return prices.map(p => [new Date(p.startsAt).getTime(), Math.round(p.total * 10000) / 100]);
-          - entity: input_number.car_cheap_grid_max_price_ct
-            name: Cheap-grid ceiling
-            unit: ct/kWh
-            yaxis_id: price
-            color: '#4CAF50'
-            type: line
-            curve: stepline
-            stroke_width: 1
-            stroke_dash: 4
-            data_generator: |
-              const v = Number(entity.state);
-              return [[start.getTime(), v], [end.getTime(), v]];
-          - entity: sensor.solcast_pv_forecast_prognose_heute
-            name: Solar forecast
-            unit: kW
-            yaxis_id: solar
-            color: '#FFB300'
-            type: area
-            curve: smooth
-            opacity: 0.25
-            stroke_width: 1
-            data_generator: |
-              const today = entity.attributes.detailedForecast || [];
-              const tomorrowEnt = hass.states['sensor.solcast_pv_forecast_prognose_morgen'];
-              const tomorrow = (tomorrowEnt && tomorrowEnt.attributes.detailedForecast) || [];
-              return today.concat(tomorrow).map(p => [new Date(p.period_start).getTime(), p.pv_estimate]);
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+            yaxis:
+              - id: price
+                decimals: 0
+                apex_config:
+                  title:
+                    text: ct/kWh
+              - id: solar
+                opposite: true
+                min: 0
+                decimals: 1
+                apex_config:
+                  title:
+                    text: kW
+            series:
+              - entity: sensor.tibber_cached_energy_prices
+                name: Price
+                unit: ct/kWh
+                yaxis_id: price
+                color: '#5299de'
+                type: line
+                curve: stepline
+                extend_to: false
+                data_generator: |
+                  const prices = (entity.attributes.today || []).concat(entity.attributes.tomorrow || []);
+                  return prices.map(p => [new Date(p.startsAt).getTime(), Math.round(p.total * 10000) / 100]);
+              - entity: input_number.car_cheap_grid_max_price_ct
+                name: Cheap-grid ceiling
+                unit: ct/kWh
+                yaxis_id: price
+                color: '#a08ae7'
+                type: line
+                curve: stepline
+                stroke_width: 1
+                stroke_dash: 4
+                data_generator: |
+                  const v = Number(entity.state);
+                  return [[start.getTime(), v], [end.getTime(), v]];
+              - entity: sensor.solcast_pv_forecast_prognose_heute
+                name: Solar forecast
+                unit: kW
+                yaxis_id: solar
+                color: '#d59619'
+                type: area
+                curve: smooth
+                opacity: 0.25
+                stroke_width: 1
+                data_generator: |
+                  const today = entity.attributes.detailedForecast || [];
+                  const tomorrowEnt = hass.states['sensor.solcast_pv_forecast_prognose_morgen'];
+                  const tomorrow = (tomorrowEnt && tomorrowEnt.attributes.detailedForecast) || [];
+                  return today.concat(tomorrow).map(p => [new Date(p.period_start).getTime(), p.pv_estimate]);
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: markdown
+            title: Grid charging price advantage
+            content: |
+              {% set d = state_attr('sensor.battery_charge_cycle_tracker', 'data') %}
+              {% if d and d.month_cycles | default(0) > 0 %}
+              **This month:** {{ d.month_kwh | round(2) }} kWh estimated grid charge in {{ d.month_cycles }}
+              cycle{{ 's' if d.month_cycles != 1 }} for {{ d.month_cost_eur | round(2) }} € —
+              **{{ d.month_saved_eur | round(2) }} € price advantage** vs day-average prices.
+              Estimate before storage losses, wear and export opportunity cost.
+              Measured since {{ d.get('measured_since', 'unknown') }}; earlier totals are retained separately.
+              {% set c = d.last_cycle %}
+              {% if c %}
 
-      # --- CAR STATUS CHIP ---
-      - type: markdown
-        content: |
-          {% if is_state('input_boolean.car_cheap_grid_active', 'on') %}
-          ### 💰 Car: cheap-grid charging
-          {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(1) }} ct/kWh,
-          wallbox {{ states('sensor.wattpilot_charging_power') | float(0) | round(0) }} W — house stays on battery.
-          {% elif is_state('input_boolean.car_boost_active', 'on') %}
-          ### ☀️ Car: solar boost running
-          Lending battery energy — {{ states('sensor.car_boost_energy_budget') | float(0) | round(0) }} Wh budget left,
-          floor {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') | float(30) | round(0) }}%.
-          {% elif is_state('input_boolean.car_boost_suppressed', 'on') %}
-          ### ⏸️ Car: boost suppressed
-          Car took no power during the last boost — paused until replugged.
-          {% elif is_state('input_boolean.car_smart_charging_on', 'off') %}
-          ### ⏹️ Car: smart charging disabled
-          {% elif is_state('binary_sensor.wattpilot_33175380_stecker', 'on') %}
-          ### 🔌 Car: plugged in, waiting
-          Eco mode — waiting for PV surplus, a viable boost, or a cheap-grid window.
-          {% else %}
-          ### 🚗 Car: not plugged in
-          {% endif %}
-
-      # --- BOOST SUPPRESSED WARNING (prominent — silently blocks boosts) ---
-      - type: conditional
-        conditions:
-          - entity: input_boolean.car_boost_suppressed
-            state: "on"
-        card:
-          type: markdown
-          content: |
-            ## ⚠️ Car boost suppressed
-            The car drew no power for 15 min during the last boost (likely full or paused).
-            Solar boost will **not start again until the car is replugged**.
-
-      # --- QUICK CONTROLS ---
-      - type: entities
-        title: "⚙️ Quick Controls"
-        show_header_toggle: false
-        entities:
-          - entity: input_boolean.battery_automation_on
-            name: Automation Enabled
-          - entity: input_boolean.manual_battery_charge
-            name: Manual Charge
-          - entity: input_number.manual_charge_target_soc
-            name: Manual Target
-          - type: divider
-          - entity: input_boolean.battery_charging_active
-            name: Charging Active
-          - entity: input_boolean.battery_no_discharging_active
-            name: Discharge Limited
-          - type: divider
-          - entity: input_boolean.car_smart_charging_on
-            name: Car Smart Charging
-          - entity: input_boolean.car_boost_active
-            name: Car Solar Boost Active
-          - entity: input_boolean.car_cheap_grid_active
-            name: Car Cheap Grid Active
-
-      # --- SAVINGS TILE ---
-      - type: markdown
-        title: "💶 Grid Charging Price Comparison"
-        content: |
-          {% set d = state_attr('sensor.battery_charge_cycle_tracker', 'data') %}
-          {% if d and d.month_cycles | default(0) > 0 %}
-          **This month:** {{ d.month_kwh | round(2) }} kWh estimated grid charge in {{ d.month_cycles }}
-          cycle{{ 's' if d.month_cycles != 1 }} for {{ d.month_cost_eur | round(2) }} € —
-          **{{ d.month_saved_eur | round(2) }} € price advantage** vs day-average prices.
-          Estimate before storage losses, wear and export opportunity cost.
-          Measured since {{ d.get('measured_since', 'unknown') }}; earlier totals are retained separately.
-          {% set c = d.last_cycle %}
-          {% if c %}
-
-          Last cycle: {{ c.kwh }} kWh @ {{ c.avg_price_ct }} ct/kWh
-          (day avg {{ c.day_avg_ct }} ct) → {{ c.saved_eur | round(2) }} € price advantage.
-          {% endif %}
-          {% else %}
-          *No completed charge cycles this month yet.*
-          {% endif %}
-
-      # --- SOC HISTORY (compact) ---
-      - type: history-graph
-        title: "Battery SoC (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: sensor.batterie_soc
-            name: SoC
-          - entity: sensor.computed_target_soc
-            name: Smart Target
-
-  # =========================================================================
-  # VIEW 2: ENERGY FLOW — Live power, storage and consumption
-  # =========================================================================
-  - title: Energy Flow
+              Last cycle: {{ c.kwh }} kWh @ {{ c.avg_price_ct }} ct/kWh
+              (day avg {{ c.day_avg_ct }} ct) → {{ c.saved_eur | round(2) }} € price advantage.
+              {% endif %}
+              {% else %}
+              *No completed charge cycles this month yet.*
+              {% endif %}
+            grid_options:
+              columns: full
+              rows: auto
+          - type: button
+            name: View history
+            icon: mdi:chart-line
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/monitoring
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+          - type: button
+            name: Preferences
+            icon: mdi:cog-outline
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/configuration
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
+        content: |-
+          # Overview
+          Your home energy, clearly.
+  - title: Energy
     path: energy_flow
     icon: mdi:transmission-tower
-    type: panel
-    cards:
-      # Wide canvas keeps the flow diagram and history together.
-      - type: vertical-stack
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 2
         cards:
           - type: custom:energy-flow-card
-
-          # --- POWER FLOW HISTORY ---
-          - type: history-graph
-            title: "Energy Flow History (2h)"
-            hours_to_show: 2
-            refresh_interval: 30
-            entities:
+            grid_options:
+              columns: full
+              rows: auto
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Energy Flow History (2h)
+            graph_span: 2h
+            series:
               - entity: sensor.total_solar_power
                 name: Solar
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#d59619'
               - entity: sensor.grid_power
                 name: Grid
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#5299de'
               - entity: sensor.battery_power
                 name: Battery
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#21aa86'
               - entity: sensor.house_consumption
                 name: House
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#ed8761'
               - entity: sensor.wallbox_power
                 name: Wallbox
-
-          # --- FLOW DETAIL ---
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#a08ae7'
+            yaxis:
+              - decimals: 1
+                apex_config:
+                  title:
+                    text: kW
+            grid_options:
+              columns: full
+              rows: auto
+            apex_config:
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Explore energy
+            heading_style: title
+            icon: mdi:solar-power-variant
+            grid_options:
+              columns: full
+              rows: auto
+          - type: button
+            name: Solar production
+            icon: mdi:solar-power
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/solar
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+          - type: button
+            name: Energy history
+            icon: mdi:chart-line
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/monitoring
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
           - type: entities
-            title: "🔄 Flow Details"
+            title: Flow Details
             show_header_toggle: false
             state_color: true
             entities:
               - type: section
                 label: Solar Flows
               - entity: sensor.solar_to_house
-                name: "Solar → House"
+                name: Solar → House
                 icon: mdi:arrow-right
               - entity: sensor.solar_to_battery
-                name: "Solar → Battery"
+                name: Solar → Battery
                 icon: mdi:arrow-right
               - entity: sensor.solar_to_grid
-                name: "Solar → Grid"
+                name: Solar → Grid
                 icon: mdi:arrow-right
               - type: divider
               - type: section
                 label: Grid & Battery Flows
               - entity: sensor.grid_to_house
-                name: "Grid → House"
+                name: Grid → House
                 icon: mdi:arrow-right
               - entity: sensor.grid_to_battery
-                name: "Grid → Battery"
+                name: Grid → Battery
                 icon: mdi:arrow-right
               - entity: sensor.battery_to_house
-                name: "Battery → House"
+                name: Battery → House
                 icon: mdi:arrow-right
+            grid_options:
+              columns: full
+              rows: auto
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
+        content: |-
+          # Energy
+          Live power, solar production and recent trends.
+  - title: Charging
+    path: charging_logic
+    icon: mdi:lightning-bolt
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:energy-status-card
+            grid_options:
+              columns: full
+              rows: auto
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Battery target and electricity price (48h)
+              show_states: false
+            graph_span: 48h
+            apex_config:
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+            yaxis:
+              - id: pct
+                min: 0
+                max: 100
+                decimals: 0
+                apex_config:
+                  title:
+                    text: '%'
+              - id: price
+                opposite: true
+                decimals: 0
+                apex_config:
+                  title:
+                    text: ct/kWh
+            series:
+              - entity: sensor.tibber_energy_prices
+                name: Price
+                unit: ct/kWh
+                yaxis_id: price
+                color: '#5299de'
+                curve: stepline
+                stroke_width: 2
+                transform: return x * 100;
+              - entity: sensor.batterie_soc
+                name: Battery SoC
+                yaxis_id: pct
+                color: '#21aa86'
+                stroke_width: 2
+              - entity: sensor.computed_target_soc
+                name: Smart Target
+                yaxis_id: pct
+                color: '#7f8b86'
+                curve: stepline
+                stroke_width: 1
+                stroke_dash: 4
+            grid_options:
+              columns: full
+              rows: auto
+          - type: history-graph
+            title: Charging modes (48h)
+            hours_to_show: 48
+            entities:
+              - entity: input_boolean.battery_charging_active
+                name: Battery charging
+              - entity: input_boolean.battery_no_discharging_active
+                name: Discharge limited
+              - entity: input_boolean.car_boost_active
+                name: Car solar boost
+              - entity: input_boolean.car_cheap_grid_active
+                name: Car cheap-grid charging
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: entities
+            title: Wallbox & Car
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: sensor.wattpilot_carconnected
+                name: Status
+              - entity: select.wattpilot_charging_mode
+                name: Mode
+              - entity: sensor.wallbox_power
+                name: Charging Power
+              - entity: input_boolean.battery_no_discharging_active
+                name: Discharge Limited (Car)
+                type: simple-entity
+                tap_action:
+                  action: none
+                hold_action:
+                  action: none
+                double_tap_action:
+                  action: none
+              - type: divider
+              - type: section
+                label: Smart Charging
+              - entity: input_boolean.car_smart_charging_on
+                name: Smart Charging Enabled
+              - entity: sensor.car_boost_energy_budget
+                name: Lendable from home battery now
+              - entity: binary_sensor.car_boost_viable
+                name: Boost would start / keep running
+              - entity: input_boolean.car_boost_active
+                name: Solar Boost running
+                type: simple-entity
+                tap_action:
+                  action: none
+                hold_action:
+                  action: none
+                double_tap_action:
+                  action: none
+              - entity: binary_sensor.car_cheap_grid_window
+                name: Grid price cheap enough
+              - entity: input_boolean.car_cheap_grid_active
+                name: Cheap-grid charging running
+                type: simple-entity
+                tap_action:
+                  action: none
+                hold_action:
+                  action: none
+                double_tap_action:
+                  action: none
+              - entity: input_boolean.car_boost_suppressed
+                name: Boost paused (car took no power — replug clears)
+                type: simple-entity
+                tap_action:
+                  action: none
+                hold_action:
+                  action: none
+                double_tap_action:
+                  action: none
+              - type: divider
+              - type: section
+                label: Grid / Inselbetrieb
+              - entity: binary_sensor.grid_available
+                name: Grid available
+              - entity: sensor.grid_frequency
+                name: Grid frequency (island ≈ 53 Hz)
+              - entity: input_datetime.grid_outage_start
+                name: Last outage detected
+            grid_options:
+              columns: full
+              rows: auto
+          - type: button
+            name: Detailed calculations
+            icon: mdi:chart-timeline-variant-shimmer
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/algorithm_debug
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+          - type: button
+            name: Charging history
+            icon: mdi:chart-line
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/monitoring
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+      - type: grid
+        column_span: 1
+        cards:
+          - type: markdown
+            title: Algorithm Decision Detail
+            content: |
+              {% set data = state_attr('sensor.battery_optimization_data', 'calculation_data') %}
+              {% if data %}
+              ## Current Decision
+              **Target SoC:** {{ states('sensor.computed_target_soc') }}%
+              **Reason:** {{ data.decision_reason }}
 
-  # =========================================================================
-  # VIEW 3: SOLAR — Production details
-  # =========================================================================
+              ### Bridge Period Analysis
+              | Parameter | Value |
+              |-----------|-------|
+              | Bridge Type | {{ data.bridge_type }} |
+              | Bridge Hours | {{ data.bridge_hours }}h |
+              | Consumption (bridge) | {{ data.bridge_consumption_wh }} Wh |
+              | Solar Remaining | {{ data.expected_solar_wh }} Wh |
+              | Usable Solar | {{ data.usable_solar_wh }} Wh |
+              | Low Solar Day | {{ data.is_low_solar_day }} |
+              | Energy Deficit | {{ data.energy_deficit_wh }} Wh |
+
+              ### Price Analysis
+              | Parameter | Value |
+              |-----------|-------|
+              | Current Price | {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(2) }} ct/kWh |
+              | Next Price | {{ data.next_price_cents }} ct/kWh |
+              | Price Drop | {{ data.price_drop_cents }} ct |
+              | Percentile | {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}% |
+              | Max Grid Target | {{ data.max_grid_target }}% |
+              {% else %}
+              *Waiting for data...*
+              {% endif %}
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Decision Sensors
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: binary_sensor.should_start_charging
+                name: Should Start Charging
+              - entity: binary_sensor.should_stop_charging
+                name: Should Stop Charging
+              - entity: binary_sensor.should_hold_battery_soc
+                name: Should Hold SoC
+              - entity: binary_sensor.should_prevent_discharge
+                name: Should Prevent Discharge
+              - type: divider
+              - entity: binary_sensor.battery_charging_is_profitable_enhanced
+                name: Profitable to Charge
+              - entity: binary_sensor.should_charge_battery_during_car_charging
+                name: Allow Charge + Car
+              - entity: binary_sensor.car_charging_stable
+                name: Car Charging (Stable)
+              - type: divider
+              - entity: sensor.discharge_limit_percentage
+                name: Discharge Limit
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Electricity price comparison (24h)
+            graph_span: 24h
+            yaxis:
+              - decimals: 1
+                apex_config:
+                  title:
+                    text: ct/kWh
+            series:
+              - entity: sensor.tibber_energy_prices
+                name: Current price
+                unit: ct/kWh
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) * 100;'
+                color: '#5299de'
+                curve: stepline
+                stroke_width: 2
+              - entity: sensor.tibber_energy_average_price_next_12_hours
+                name: 12h average
+                unit: ct/kWh
+                color: '#7f8b86'
+                stroke_width: 1
+                stroke_dash: 4
+              - entity: sensor.tibber_energy_highest_price_next_24_hours
+                name: 24h maximum
+                unit: ct/kWh
+                color: '#ed8761'
+                stroke_width: 1
+            grid_options:
+              columns: full
+              rows: auto
+            apex_config:
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+          - type: history-graph
+            title: Solar Forecast Impact (24h)
+            hours_to_show: 24
+            entities:
+              - entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
+                name: Solar Remaining
+            grid_options:
+              columns: full
+              rows: auto
+          - type: history-graph
+            title: Solar forecast conditions (24h)
+            hours_to_show: 24
+            entities:
+              - entity: binary_sensor.expected_sun_low
+                name: Low solar forecast
+              - entity: binary_sensor.expected_sun_very_low
+                name: Very low solar forecast
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: conditional
+            conditions:
+              - entity: binary_sensor.wattpilot_33175380_stecker
+                state: 'on'
+            card:
+              type: markdown
+              title: Car Boost Decision Detail
+              content: |
+                {% set data = state_attr('sensor.car_boost_energy_budget', 'calculation_data') %}
+                {% if data %}
+                **Budget:** {{ states('sensor.car_boost_energy_budget') }} Wh &nbsp; | &nbsp;
+                **Floor:** {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') }}% &nbsp; | &nbsp;
+                **Viable:** {{ states('binary_sensor.car_boost_viable') }}
+
+                **Reason:** {{ data.decision_reason }}
+
+                ### Budget Constraints (minimum wins)
+                | Constraint | Value |
+                |-----------|-------|
+                | 1 — Battery above floor | {{ data.constraint_floor_wh }} Wh |
+                | 2 — Tonight still covered | {{ data.constraint_overnight_wh }} Wh |
+                | 3 — Sun can refill the loan | {{ data.constraint_solar_wh }} Wh |
+
+                ### Inputs
+                | Parameter | Value |
+                |-----------|-------|
+                | Battery SoC | {{ data.soc }}% |
+                | Solar remaining today | {{ data.remaining_solar_wh }} Wh |
+                | Usable (× confidence) | {{ data.usable_solar_wh }} Wh |
+                | House until sunset | {{ data.house_until_sunset_wh }} Wh |
+                | Solar surplus | {{ data.solar_surplus_wh }} Wh |
+                | Needed at sunset | {{ data.needed_at_sunset_wh }} Wh |
+                {% else %}
+                *Waiting for data...*
+                {% endif %}
+            grid_options:
+              columns: full
+              rows: auto
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
+        content: |-
+          # Charging
+          Understand the plan and what your car is doing.
+  - title: Settings
+    path: configuration
+    icon: mdi:cog
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 1
+        cards:
+          - type: entities
+            title: Battery reserve
+            show_header_toggle: false
+            entities:
+              - entity: input_number.soc_target_default
+                name: Default Target
+              - entity: input_number.soc_hist
+                name: SoC Hysteresis
+              - entity: input_number.battery_hold_threshold
+                name: Hold Threshold
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Price rules
+            show_header_toggle: false
+            entities:
+              - entity: input_number.battery_wear_cost_per_kwh
+                name: Battery Wear Cost
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Household schedule
+            show_header_toggle: false
+            entities:
+              - entity: input_number.night_consumption_rate_wh
+                name: Night Rate
+              - entity: input_number.day_consumption_rate_wh
+                name: Day Rate
+              - entity: input_number.weekday_wake_hour
+                name: Weekday Wake
+              - entity: input_number.weekend_wake_hour
+                name: Weekend Wake
+              - entity: input_number.sleep_hour
+                name: Sleep Hour
+            grid_options:
+              columns: full
+              rows: auto
+          - type: markdown
+            title: About these settings
+            content: |-
+              Solar boost lends battery energy only when forecast solar can refill it. Cheap-grid charging requires both price rules to pass.
+
+              Schedule times use decimal hours: **5.5 = 05:30**, **7.5 = 07:30**, **22 = 22:00**. Rates and thresholds retain the units shown by each control.
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: entities
+            title: Car solar boost
+            show_header_toggle: false
+            entities:
+              - entity: input_number.car_charging_hysteresis_minutes
+                name: Charging detection delay
+              - entity: input_boolean.car_smart_charging_on
+                name: Smart charging enabled
+              - entity: input_number.car_boost_min_soc
+                name: Battery reserve floor
+              - entity: input_number.car_boost_floor_margin_pct
+                name: Reserve safety margin
+              - entity: input_number.car_boost_island_floor_soc
+                name: Reserve during grid outage
+              - entity: input_number.car_boost_min_budget_wh
+                name: Minimum boost budget
+              - entity: input_number.car_boost_solar_confidence_pct
+                name: Forecast confidence
+              - entity: input_number.car_boost_charging_current_a
+                name: Boost charging current
+              - entity: input_number.car_boost_notify_throttle_min
+                name: Boost notification interval
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Car cheap-grid charging
+            show_header_toggle: false
+            entities:
+              - entity: input_number.car_cheap_grid_percentile
+                name: Lowest price percentile
+              - entity: input_number.car_cheap_grid_max_price_ct
+                name: Maximum grid price
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Solar Forecast Thresholds
+            show_header_toggle: false
+            entities:
+              - entity: input_number.sun_threshold_low
+                name: Low Sun Threshold
+              - entity: input_number.sun_threshold_very_low
+                name: Very Low Sun Threshold
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: System tools
+            heading_style: title
+            icon: mdi:tools
+            grid_options:
+              columns: full
+              rows: auto
+          - type: button
+            name: Diagnostics
+            icon: mdi:stethoscope
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/debug
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+          - type: button
+            name: Algorithm details
+            icon: mdi:chart-timeline-variant-shimmer
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/algorithm_debug
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+          - type: button
+            name: Manual service actions
+            icon: mdi:gesture-tap-button
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/manual_controls
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+          - type: button
+            name: History
+            icon: mdi:chart-line
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /energy-overview/monitoring
+            hold_action:
+              action: none
+            grid_options:
+              columns: 6
+              rows: 2
+          - type: entities
+            title: System parameters
+            show_header_toggle: false
+            entities:
+              - entity: input_number.battery_capacity_wh
+                name: Battery Capacity
+              - entity: input_number.battery_charge_rate_max
+                name: Max Charge Rate
+              - entity: input_number.grid_connection_capacity
+                name: Grid Capacity
+              - entity: input_number.low_solar_threshold_wh
+                name: Low Solar Threshold
+            grid_options:
+              columns: full
+              rows: auto
+          - type: markdown
+            title: ℹ️ How Car Smart Charging Works
+            content: |
+              **☀️ Solar Boost** — In Eco mode the car normally waits for live PV
+              surplus. When today's *forecast* shows the sun will refill the home
+              battery anyway, the car may **borrow** energy from it right away
+              (Wattpilot Boost, charger stays in Eco). It stops at the battery
+              floor, when the borrowed budget is spent, or when the forecast no
+              longer covers tonight's house consumption.
+
+              - **Never drain below**: hard floor for the home battery — boost
+                never pulls it under this SoC.
+              - **Lendable energy**: how much may be borrowed right now
+                (limited by floor, tonight's needs, and what the sun can refill).
+              - **Trust solar forecast**: discount applied to Solcast
+                (70% = plan with only 70% of the forecast, safety first).
+              - **Car current while boosting**: 6 A ≈ 4.1 kW, roughly what
+                battery + PV can supply without importing from grid.
+                Restored to 16 A automatically after every boost.
+
+              **💰 Cheap Grid** — When electricity is negative-priced, or both
+              among the cheapest X% of the next 12 h *and* under the absolute
+              ceiling, the wallbox temporarily switches **Eco → Default** and the
+              car charges at full power from the grid (house keeps running on
+              battery). It switches back to Eco when prices rise. If you change
+              the wallbox mode manually, the automation backs off.
+            grid_options:
+              columns: full
+              rows: auto
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
+        content: |-
+          # Settings
+          Adjust your preferences and find system tools.
   - title: Solar
     path: solar
     icon: mdi:solar-power
-    cards:
-      - type: gauge
-        entity: sensor.total_solar_power
-        name: Total Solar Production
-        min: 0
-        max: 6800
-        severity:
-          green: 1000
-          yellow: 100
-          red: 0
-        needle: true
-
-      - type: entities
-        title: "☀️ Solar Systems"
-        show_header_toggle: false
-        state_color: true
-        entities:
-          - entity: sensor.total_solar_power
-            name: Total Power
-            icon: mdi:solar-power-variant
-          - type: divider
-          - type: section
-            label: Fronius Gen24 6.0
-          - entity: sensor.fronius_solar_power
-            name: Current Power
-            icon: mdi:solar-panel-large
-          - entity: sensor.fronius_solar_status
-            name: Status
-          - entity: binary_sensor.fronius_solar_online
-            name: Online
-          - type: divider
-          - type: section
-            label: Balkonkraftwerk Deye (800W)
-          - entity: sensor.balkonkraftwerk_power
-            name: Current Power
-            icon: mdi:solar-panel
-          - entity: sensor.balkonkraftwerk_daily_energy
-            name: Daily Energy
-          - entity: sensor.balkonkraftwerk_status
-            name: Status
-          - entity: binary_sensor.balkonkraftwerk_online
-            name: Online
-
-      - type: history-graph
-        title: "Solar Power (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: sensor.fronius_solar_power
-            name: Fronius
-          - entity: sensor.balkonkraftwerk_power
-            name: Balkonkraftwerk
-          - entity: sensor.total_solar_power
-            name: Total
-
-      # --- FORECAST vs ACTUAL (calibrates the boost solar confidence) ---
-      - type: custom:apexcharts-card
-        header:
-          show: true
-          title: "☀️ Forecast vs Actual (today)"
-          show_states: false
-        graph_span: 24h
-        span:
-          start: day
-        now:
-          show: true
-        apex_config:
-          legend:
-            show: true
-        yaxis:
-          - min: 0
-            decimals: 1
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 1
+        cards:
+          - type: tile
+            entity: sensor.total_solar_power
+            name: Solar generation
+            icon: mdi:solar-power
+            color: '#d59619'
+            tap_action:
+              action: more-info
+            icon_tap_action:
+              action: more-info
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Solar Systems
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: sensor.total_solar_power
+                name: Total Power
+                icon: mdi:solar-power-variant
+              - type: divider
+              - type: section
+                label: Fronius Gen24 6.0
+              - entity: sensor.fronius_solar_power
+                name: Current Power
+                icon: mdi:solar-panel-large
+              - entity: sensor.fronius_solar_status
+                name: Status
+              - entity: binary_sensor.fronius_solar_online
+                name: Online
+              - type: divider
+              - type: section
+                label: Balkonkraftwerk Deye (800W)
+              - entity: sensor.balkonkraftwerk_power
+                name: Current Power
+                icon: mdi:solar-panel
+              - entity: sensor.balkonkraftwerk_daily_energy
+                name: Daily Energy
+              - entity: sensor.balkonkraftwerk_status
+                name: Status
+              - entity: binary_sensor.balkonkraftwerk_online
+                name: Online
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Balkonkraftwerk Details
+            show_header_toggle: false
+            entities:
+              - entity: sensor.inverter_grid_voltage
+                name: Grid Voltage
+              - entity: sensor.inverter_grid_frequency
+                name: Grid Frequency
+              - entity: sensor.inverter_temperature
+                name: Temperature
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Forecast vs Actual (today)
+              show_states: false
+            graph_span: 24h
+            span:
+              start: day
+            now:
+              show: true
             apex_config:
-              title:
-                text: kW
-        series:
-          - entity: sensor.solcast_pv_forecast_prognose_heute
-            name: Solcast forecast
-            type: area
-            color: '#FFB300'
-            opacity: 0.25
-            stroke_width: 1
-            curve: smooth
-            data_generator: |
-              return (entity.attributes.detailedForecast || []).map(p => [new Date(p.period_start).getTime(), p.pv_estimate]);
-          - entity: sensor.total_solar_power
-            name: Actual PV
-            type: line
-            color: '#FF5722'
-            stroke_width: 2
-            curve: smooth
-            group_by:
-              func: avg
-              duration: 15min
-            transform: return x / 1000;
-
-      - type: entities
-        title: "☀️ Solar Forecast"
-        show_header_toggle: false
-        entities:
-          - entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
-            name: Remaining Today
-          - entity: sensor.solcast_pv_forecast_forecast_next_x_hours
-            name: Forecast Next Hours
-          - entity: binary_sensor.expected_sun_low
-            name: Expected Sun Low
-          - entity: binary_sensor.expected_sun_very_low
-            name: Expected Sun Very Low
-
-      - type: entities
-        title: "Balkonkraftwerk Details"
-        show_header_toggle: false
-        entities:
-          - entity: sensor.inverter_grid_voltage
-            name: Grid Voltage
-          - entity: sensor.inverter_grid_frequency
-            name: Grid Frequency
-          - entity: sensor.inverter_temperature
-            name: Temperature
-
-  # =========================================================================
-  # VIEW 4: CHARGING LOGIC — Algorithm decision analysis
-  # =========================================================================
-  - title: Charging Logic
-    path: charging_logic
-    icon: mdi:lightning-bolt
-    cards:
-      # --- ALGORITHM DECISION DETAIL ---
-      - type: markdown
-        title: "🧠 Algorithm Decision Detail"
-        content: |
-          {% set data = state_attr('sensor.battery_optimization_data', 'calculation_data') %}
-          {% if data %}
-          ## Current Decision
-          **Target SoC:** {{ states('sensor.computed_target_soc') }}%
-          **Reason:** {{ data.decision_reason }}
-
-          ### Bridge Period Analysis
-          | Parameter | Value |
-          |-----------|-------|
-          | Bridge Type | {{ data.bridge_type }} |
-          | Bridge Hours | {{ data.bridge_hours }}h |
-          | Consumption (bridge) | {{ data.bridge_consumption_wh }} Wh |
-          | Solar Remaining | {{ data.expected_solar_wh }} Wh |
-          | Usable Solar | {{ data.usable_solar_wh }} Wh |
-          | Low Solar Day | {{ data.is_low_solar_day }} |
-          | Energy Deficit | {{ data.energy_deficit_wh }} Wh |
-
-          ### Price Analysis
-          | Parameter | Value |
-          |-----------|-------|
-          | Current Price | {{ (states('sensor.tibber_cached_energy_prices') | float(0) * 100) | round(2) }} ct/kWh |
-          | Next Price | {{ data.next_price_cents }} ct/kWh |
-          | Price Drop | {{ data.price_drop_cents }} ct |
-          | Percentile | {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}% |
-          | Max Grid Target | {{ data.max_grid_target }}% |
-          {% else %}
-          *Waiting for data...*
-          {% endif %}
-
-      - type: entities
-        title: "Decision Sensors"
-        show_header_toggle: false
-        state_color: true
-        entities:
-          - entity: binary_sensor.should_start_charging
-            name: Should Start Charging
-          - entity: binary_sensor.should_stop_charging
-            name: Should Stop Charging
-          - entity: binary_sensor.should_hold_battery_soc
-            name: Should Hold SoC
-          - entity: binary_sensor.should_prevent_discharge
-            name: Should Prevent Discharge
-          - type: divider
-          - entity: binary_sensor.battery_charging_is_profitable_enhanced
-            name: Profitable to Charge
-          - entity: binary_sensor.should_charge_battery_during_car_charging
-            name: Allow Charge + Car
-          - entity: binary_sensor.car_charging_stable
-            name: Car Charging (Stable)
-          - type: divider
-          - entity: sensor.discharge_limit_percentage
-            name: Discharge Limit
-
-      # --- PRICE vs CHARGING (48h, dual axis: ct/kWh right, % left) ---
-      - type: custom:apexcharts-card
-        header:
-          show: true
-          title: "Price vs Charging Decision (48h)"
-          show_states: false
-        graph_span: 48h
-        apex_config:
-          legend:
-            show: true
-        yaxis:
-          - id: pct
-            min: 0
-            max: 100
-            decimals: 0
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+            yaxis:
+              - min: 0
+                decimals: 1
+                apex_config:
+                  title:
+                    text: kW
+            series:
+              - entity: sensor.solcast_pv_forecast_prognose_heute
+                name: Solcast forecast
+                type: area
+                color: '#d59619'
+                opacity: 0.25
+                stroke_width: 1
+                curve: smooth
+                data_generator: |
+                  return (entity.attributes.detailedForecast || []).map(p => [new Date(p.period_start).getTime(), p.pv_estimate]);
+              - entity: sensor.total_solar_power
+                name: Actual PV
+                type: line
+                color: '#d59619'
+                stroke_width: 2
+                curve: smooth
+                group_by:
+                  func: avg
+                  duration: 15min
+                transform: return x / 1000;
+            grid_options:
+              columns: full
+              rows: auto
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Solar Power (24h)
+            graph_span: 24h
+            series:
+              - entity: sensor.fronius_solar_power
+                name: Fronius
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#d59619'
+              - entity: sensor.balkonkraftwerk_power
+                name: Balkonkraftwerk
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: sensor.total_solar_power
+                name: Total
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#d59619'
+            yaxis:
+              - decimals: 1
+                apex_config:
+                  title:
+                    text: kW
+            grid_options:
+              columns: full
+              rows: auto
             apex_config:
-              title:
-                text: "%"
-          - id: price
-            opposite: true
-            decimals: 0
-            apex_config:
-              title:
-                text: ct/kWh
-        series:
-          - entity: sensor.tibber_energy_prices
-            name: Price
-            unit: ct/kWh
-            yaxis_id: price
-            color: '#2196F3'
-            curve: stepline
-            stroke_width: 2
-            transform: return x * 100;
-          - entity: sensor.batterie_soc
-            name: Battery SoC
-            yaxis_id: pct
-            color: '#4CAF50'
-            stroke_width: 2
-          - entity: sensor.computed_target_soc
-            name: Smart Target
-            yaxis_id: pct
-            color: '#9C27B0'
-            curve: stepline
-            stroke_width: 1
-            stroke_dash: 4
-          - entity: input_boolean.battery_charging_active
-            name: Charging Active
-            yaxis_id: pct
-            color: '#FF9800'
-            type: area
-            curve: stepline
-            opacity: 0.15
-            stroke_width: 0
-            transform: "return x === 'on' ? 100 : 0;"
-          - entity: input_boolean.battery_no_discharging_active
-            name: Discharge Limited
-            yaxis_id: pct
-            color: '#F44336'
-            type: area
-            curve: stepline
-            opacity: 0.1
-            stroke_width: 0
-            transform: "return x === 'on' ? 100 : 0;"
-
-      # --- PROFITABILITY ---
-      - type: history-graph
-        title: "Profitability Factors (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: sensor.tibber_energy_prices
-            name: Current Price
-          - entity: sensor.tibber_energy_average_price_next_12_hours
-            name: Avg Price (12h)
-          - entity: sensor.tibber_energy_highest_price_next_24_hours
-            name: Max Price (24h)
-          - entity: sensor.tibber_energy_price_percentile_next_12_hours
-            name: Price Percentile
-
-      # --- SOLAR IMPACT ---
-      - type: history-graph
-        title: "Solar Forecast Impact (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
-            name: Solar Remaining
-          - entity: binary_sensor.expected_sun_low
-            name: Low Sun Flag
-          - entity: binary_sensor.expected_sun_very_low
-            name: Very Low Sun Flag
-
-      # --- WALLBOX ---
-      - type: entities
-        title: "🚗 Wallbox & Car"
-        show_header_toggle: false
-        state_color: true
-        entities:
-          - entity: sensor.wattpilot_carconnected
-            name: Status
-          - entity: select.wattpilot_charging_mode
-            name: Mode
-          - entity: sensor.wallbox_power
-            name: Charging Power
-          - entity: input_boolean.battery_no_discharging_active
-            name: Discharge Limited (Car)
-          - type: divider
-          - type: section
-            label: Smart Charging
-          - entity: input_boolean.car_smart_charging_on
-            name: Smart Charging Enabled
-          - entity: sensor.car_boost_energy_budget
-            name: Lendable from home battery now
-          - entity: binary_sensor.car_boost_viable
-            name: Boost would start / keep running
-          - entity: input_boolean.car_boost_active
-            name: Solar Boost running
-          - entity: binary_sensor.car_cheap_grid_window
-            name: Grid price cheap enough
-          - entity: input_boolean.car_cheap_grid_active
-            name: Cheap-grid charging running
-          - entity: input_boolean.car_boost_suppressed
-            name: Boost paused (car took no power — replug clears)
-          - type: divider
-          - type: section
-            label: "Grid / Inselbetrieb"
-          - entity: binary_sensor.grid_available
-            name: Grid available
-          - entity: sensor.grid_frequency
-            name: Grid frequency (island ≈ 53 Hz)
-          - entity: input_datetime.grid_outage_start
-            name: Last outage detected
-
-      # --- CAR SMART CHARGING DECISION (only shown while the car is plugged in) ---
-      - type: conditional
-        conditions:
-          - entity: binary_sensor.wattpilot_33175380_stecker
-            state: "on"
-        card:
-          type: markdown
-          title: "☀️ Car Boost Decision Detail"
-          content: |
-            {% set data = state_attr('sensor.car_boost_energy_budget', 'calculation_data') %}
-            {% if data %}
-            **Budget:** {{ states('sensor.car_boost_energy_budget') }} Wh &nbsp; | &nbsp;
-            **Floor:** {{ state_attr('sensor.car_boost_energy_budget', 'floor_soc') }}% &nbsp; | &nbsp;
-            **Viable:** {{ states('binary_sensor.car_boost_viable') }}
-
-            **Reason:** {{ data.decision_reason }}
-
-            ### Budget Constraints (minimum wins)
-            | Constraint | Value |
-            |-----------|-------|
-            | 1 — Battery above floor | {{ data.constraint_floor_wh }} Wh |
-            | 2 — Tonight still covered | {{ data.constraint_overnight_wh }} Wh |
-            | 3 — Sun can refill the loan | {{ data.constraint_solar_wh }} Wh |
-
-            ### Inputs
-            | Parameter | Value |
-            |-----------|-------|
-            | Battery SoC | {{ data.soc }}% |
-            | Solar remaining today | {{ data.remaining_solar_wh }} Wh |
-            | Usable (× confidence) | {{ data.usable_solar_wh }} Wh |
-            | House until sunset | {{ data.house_until_sunset_wh }} Wh |
-            | Solar surplus | {{ data.solar_surplus_wh }} Wh |
-            | Needed at sunset | {{ data.needed_at_sunset_wh }} Wh |
-            {% else %}
-            *Waiting for data...*
-            {% endif %}
-
-  # =========================================================================
-  # VIEW 5: MONITORING — Historical graphs
-  # =========================================================================
-  - title: Monitoring
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+      - type: grid
+        column_span: 1
+        cards:
+          - type: entities
+            title: Solar Forecast
+            show_header_toggle: false
+            entities:
+              - entity: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
+                name: Remaining Today
+              - entity: sensor.solcast_pv_forecast_forecast_next_x_hours
+                name: Forecast Next Hours
+              - entity: binary_sensor.expected_sun_low
+                name: Expected Sun Low
+              - entity: binary_sensor.expected_sun_very_low
+                name: Expected Sun Very Low
+            grid_options:
+              columns: full
+              rows: auto
+    subview: true
+    back_path: /energy-overview/energy_flow
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
+        content: |-
+          # Solar
+          Generation, forecast and device health.
+  - title: History
     path: monitoring
     icon: mdi:chart-line
-    cards:
-      - type: history-graph
-        title: "🔋 Battery SoC (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: sensor.batterie_soc
-            name: Battery SoC
-          - entity: input_number.battery_target_soc
-            name: Target SoC
-          - entity: sensor.computed_target_soc
-            name: Smart Target
-
-      - type: history-graph
-        title: "Charging State (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: input_boolean.battery_charging_active
-            name: Charging Active
-          - entity: input_boolean.battery_no_discharging_active
-            name: Discharge Limited
-          - entity: binary_sensor.should_start_charging
-            name: Should Start
-
-      - type: history-graph
-        title: "💰 Price History (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: sensor.tibber_energy_prices
-            name: Energy Price
-
-      - type: history-graph
-        title: "☀️ Solar Production (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: sensor.total_solar_power
-            name: Total Solar
-          - entity: sensor.fronius_solar_power
-            name: Fronius
-          - entity: sensor.balkonkraftwerk_power
-            name: Balkonkraftwerk
-
-      - type: entities
-        title: "System Health"
-        show_header_toggle: false
-        entities:
-          - entity: binary_sensor.tibber_pulse_not_functioning
-            name: Tibber Pulse Status
-          - entity: sensor.battery_control_status
-            name: Control Status
-
-  # =========================================================================
-  # VIEW 6: CONFIGURATION — Settings and manual controls
-  # =========================================================================
-  - title: Configuration
-    path: configuration
-    icon: mdi:cog
-    cards:
-      - type: entities
-        title: "⚙️ Battery Algorithm Settings"
-        show_header_toggle: false
-        entities:
-          - type: section
-            label: Target SoC
-          - entity: input_number.soc_target_default
-            name: Default Target
-          - entity: input_number.soc_hist
-            name: SoC Hysteresis
-          - entity: input_number.battery_hold_threshold
-            name: Hold Threshold
-          - type: divider
-          - type: section
-            label: Price Controls
-          - entity: input_number.battery_wear_cost_per_kwh
-            name: Battery Wear Cost
-          - type: divider
-          - type: section
-            label: Consumption Model
-          - entity: input_number.night_consumption_rate_wh
-            name: Night Rate
-          - entity: input_number.day_consumption_rate_wh
-            name: Day Rate
-          - entity: input_number.weekday_wake_hour
-            name: Weekday Wake
-          - entity: input_number.weekend_wake_hour
-            name: Weekend Wake
-          - entity: input_number.sleep_hour
-            name: Sleep Hour
-          - type: divider
-          - type: section
-            label: System Parameters
-          - entity: input_number.battery_capacity_wh
-            name: Battery Capacity
-          - entity: input_number.battery_charge_rate_max
-            name: Max Charge Rate
-          - entity: input_number.grid_connection_capacity
-            name: Grid Capacity
-          - entity: input_number.low_solar_threshold_wh
-            name: Low Solar Threshold
-
-      - type: entities
-        title: "Solar Forecast Thresholds"
-        show_header_toggle: false
-        entities:
-          - entity: input_number.sun_threshold_low
-            name: Low Sun Threshold
-          - entity: input_number.sun_threshold_very_low
-            name: Very Low Sun Threshold
-
-      - type: entities
-        title: "🔧 Manual Control Scripts"
-        show_header_toggle: false
-        entities:
-          - entity: script.start_battery_charging
-            name: Start Charging
-            icon: mdi:battery-charging
-          - entity: script.stop_battery_charging
-            name: Stop Charging
-            icon: mdi:battery-off
-          - entity: script.start_limit_discharging
-            name: Limit Discharge
-            icon: mdi:battery-lock
-          - entity: script.stop_limit_discharging
-            name: Stop Limit Discharge
-            icon: mdi:battery-unlock
-          - type: divider
-          - entity: script.set_regular_charge
-            name: Set Regular Charge
-          - entity: script.forced_half_recharge
-            name: Force Half Recharge
-          - entity: script.forced_full_recharge
-            name: Force Full Recharge
-          - entity: script.charge_battery_reduced_rate
-            name: Reduced Charge Rate
-          - entity: script.hold_battery_soc
-            name: Hold Battery SoC
-
-      - type: entities
-        title: "🚗 Car Charging Settings"
-        show_header_toggle: false
-        entities:
-          - entity: input_number.car_charging_hysteresis_minutes
-            name: Detect "car is charging" after (min)
-          - type: divider
-          - type: section
-            label: "Solar Boost — car borrows from home battery when sun will refill it"
-          - entity: input_boolean.car_smart_charging_on
-            name: Enable smart car charging
-          - entity: input_number.car_boost_min_soc
-            name: Never drain home battery below (rec. 30%)
-          - entity: input_number.car_boost_floor_margin_pct
-            name: Extra stop margin, SoC reads high under load (rec. 10%)
-          - entity: input_number.car_boost_island_floor_soc
-            name: Floor during grid outage / Inselbetrieb (rec. 80%)
-          - entity: input_number.car_boost_min_budget_wh
-            name: Start only if ≥ this much lendable (rec. 2000 Wh)
-          - entity: input_number.car_boost_solar_confidence_pct
-            name: Trust solar forecast to (rec. 70%)
-          - entity: input_number.car_boost_charging_current_a
-            name: Car current while boosting (rec. 6 A)
-          - entity: input_number.car_boost_notify_throttle_min
-            name: Quiet time between boost start alerts (rec. 60 min)
-          - type: divider
-          - type: section
-            label: "Cheap Grid — car charges from grid when power is very cheap"
-          - entity: input_number.car_cheap_grid_percentile
-            name: Price among cheapest X% of next 12h (rec. 10)
-          - entity: input_number.car_cheap_grid_max_price_ct
-            name: …and below this price (rec. 15 ct/kWh)
-
-      - type: markdown
-        title: "ℹ️ How Car Smart Charging Works"
-        content: |
-          **☀️ Solar Boost** — In Eco mode the car normally waits for live PV
-          surplus. When today's *forecast* shows the sun will refill the home
-          battery anyway, the car may **borrow** energy from it right away
-          (Wattpilot Boost, charger stays in Eco). It stops at the battery
-          floor, when the borrowed budget is spent, or when the forecast no
-          longer covers tonight's house consumption.
-
-          - **Never drain below**: hard floor for the home battery — boost
-            never pulls it under this SoC.
-          - **Lendable energy**: how much may be borrowed right now
-            (limited by floor, tonight's needs, and what the sun can refill).
-          - **Trust solar forecast**: discount applied to Solcast
-            (70% = plan with only 70% of the forecast, safety first).
-          - **Car current while boosting**: 6 A ≈ 4.1 kW, roughly what
-            battery + PV can supply without importing from grid.
-            Restored to 16 A automatically after every boost.
-
-          **💰 Cheap Grid** — When electricity is negative-priced, or both
-          among the cheapest X% of the next 12 h *and* under the absolute
-          ceiling, the wallbox temporarily switches **Eco → Default** and the
-          car charges at full power from the grid (house keeps running on
-          battery). It switches back to Eco when prices rise. If you change
-          the wallbox mode manually, the automation backs off.
-
-  # =========================================================================
-  # VIEW 7: DEBUG — Development and diagnostics (moved from other views)
-  # =========================================================================
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Battery SoC (24h)
+            graph_span: 24h
+            series:
+              - entity: sensor.batterie_soc
+                name: Battery SoC
+                unit: '%'
+                stroke_width: 2
+                curve: stepline
+                color: '#21aa86'
+              - entity: input_number.battery_target_soc
+                name: Target SoC
+                unit: '%'
+                stroke_width: 1
+                curve: stepline
+                stroke_dash: 4
+                color: '#7f8b86'
+              - entity: sensor.computed_target_soc
+                name: Smart Target
+                unit: '%'
+                stroke_width: 1
+                curve: stepline
+                stroke_dash: 4
+                color: '#7f8b86'
+            yaxis:
+              - decimals: 0
+                apex_config:
+                  title:
+                    text: '%'
+                min: 0
+                max: 100
+            grid_options:
+              columns: full
+              rows: auto
+            apex_config:
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+          - type: history-graph
+            title: Charging State (24h)
+            hours_to_show: 24
+            entities:
+              - entity: input_boolean.battery_charging_active
+                name: Charging Active
+              - entity: input_boolean.battery_no_discharging_active
+                name: Discharge Limited
+              - entity: binary_sensor.should_start_charging
+                name: Should Start
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Price History (24h)
+            graph_span: 24h
+            series:
+              - entity: sensor.tibber_energy_prices
+                name: Energy Price
+                unit: ct/kWh
+                stroke_width: 2
+                curve: stepline
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) * 100;'
+                color: '#5299de'
+            yaxis:
+              - decimals: 1
+                apex_config:
+                  title:
+                    text: ct/kWh
+            grid_options:
+              columns: full
+              rows: auto
+            apex_config:
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Solar Production (24h)
+            graph_span: 24h
+            series:
+              - entity: sensor.total_solar_power
+                name: Total Solar
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#d59619'
+              - entity: sensor.fronius_solar_power
+                name: Fronius
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+                color: '#d59619'
+              - entity: sensor.balkonkraftwerk_power
+                name: Balkonkraftwerk
+                unit: kW
+                stroke_width: 2
+                curve: straight
+                transform: 'return x == null || !Number.isFinite(Number(x)) ? null : Number(x) / 1000;'
+                group_by:
+                  func: avg
+                  duration: 5min
+            yaxis:
+              - decimals: 1
+                apex_config:
+                  title:
+                    text: kW
+            grid_options:
+              columns: full
+              rows: auto
+            apex_config:
+              chart:
+                fontFamily: inherit
+                toolbar:
+                  show: false
+              legend:
+                show: true
+                position: bottom
+                fontSize: 12px
+          - type: entities
+            title: System Health
+            show_header_toggle: false
+            entities:
+              - entity: binary_sensor.tibber_pulse_not_functioning
+                name: Tibber Pulse Status
+              - entity: sensor.battery_control_status
+                name: Control Status
+            grid_options:
+              columns: full
+              rows: auto
+    subview: true
+    back_path: /energy-overview/overview
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
+        content: |-
+          # History
+          Battery, prices and charging over time.
   - title: Debug
     path: debug
     icon: mdi:bug
-    cards:
-      - type: markdown
-        content: |
-          ## 🔧 Debug & Diagnostics
-          This view contains debug sensors and test scripts moved from other views.
-          Use this for troubleshooting only.
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 1
+        cards:
+          - type: markdown
+            content: |
+              ## 🔧 Debug & Diagnostics
+              This view contains debug sensors and test scripts moved from other views.
+              Use this for troubleshooting only.
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Energy sensor health
+            show_header_toggle: false
+            entities:
+              - entity: sensor.sankey_entity_check
+                name: Entity Check Status
+                icon: mdi:check-circle
+              - type: attribute
+                entity: sensor.sankey_entity_check
+                attribute: available_count
+                name: Available Entities
+              - type: attribute
+                entity: sensor.sankey_entity_check
+                attribute: total_entities
+                name: Total Entities
+              - entity: sensor.sankey_debug_info
+                name: Diagnosis
+              - type: divider
+              - entity: sensor.total_solar_power
+                name: Total Solar
+                secondary_info: last_changed
+              - entity: sensor.grid_power
+                name: Grid Power
+                secondary_info: last_changed
+              - entity: sensor.battery_power
+                name: Battery Power
+                secondary_info: last_changed
+              - entity: sensor.house_consumption
+                name: House Consumption
+                secondary_info: last_changed
+              - entity: binary_sensor.grid_control_ready
+                name: Grid control ready
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: entities
+            title: Energy allocation readings
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - type: section
+                label: Primary Sources
+              - entity: sensor.total_solar_power
+                name: Total Solar Power
+                secondary_info: last_changed
+              - entity: sensor.fronius_solar_power
+                name: '  └─ Fronius'
+                secondary_info: last_changed
+              - entity: sensor.balkonkraftwerk_power
+                name: '  └─ Balkonkraftwerk'
+                secondary_info: last_changed
+              - entity: sensor.grid_power
+                name: Grid Power
+                secondary_info: last_changed
+              - entity: sensor.battery_power
+                name: Battery Power
+                secondary_info: last_changed
+              - type: divider
+              - type: section
+                label: Flow Sensors
+              - entity: sensor.solar_to_house
+                name: Solar → House
+                secondary_info: last_changed
+              - entity: sensor.solar_to_battery
+                name: Solar → Battery
+                secondary_info: last_changed
+              - entity: sensor.solar_to_grid
+                name: Solar → Grid
+                secondary_info: last_changed
+              - entity: sensor.grid_to_house
+                name: Grid → House
+                secondary_info: last_changed
+              - entity: sensor.grid_to_battery
+                name: Grid → Battery
+                secondary_info: last_changed
+              - entity: sensor.battery_to_house
+                name: Battery → House
+                secondary_info: last_changed
+              - type: divider
+              - type: section
+                label: Consumption
+              - entity: sensor.house_consumption
+                name: House Consumption
+                secondary_info: last_changed
+              - entity: sensor.wallbox_power
+                name: Wallbox Power
+                secondary_info: last_changed
+              - type: divider
+              - type: section
+                label: Supporting Sensors
+              - entity: sensor.charging_state
+                name: Charging State
+              - entity: sensor.reading_energy_main_meter
+                name: Main Meter Reading
+                secondary_info: last_changed
+              - entity: sensor.reading_energy_inverter_ac_output
+                name: Inverter AC Output
+                secondary_info: last_changed
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Fronius Details
+            show_header_toggle: false
+            entities:
+              - entity: sensor.reading_energy_inverter_ac_output
+                name: AC Output Power
+              - entity: sensor.reading_energy_main_meter
+                name: Main Meter Reading
+              - entity: sensor.batterie_soc
+                name: Battery SoC
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: entities
+            title: Hold SOC Test Scripts
+            show_header_toggle: false
+            entities:
+              - entity: script.test_hold_soc_enable
+                name: 'TEST: Enable Hold SOC'
+                confirmation:
+                  text: 'Run test: enable hold soc? This changes battery operating settings; automatic control may
+                    later override them.'
+              - entity: script.test_hold_soc_disable
+                name: 'TEST: Disable Hold SOC'
+                confirmation:
+                  text: 'Run test: disable hold soc? This changes battery operating settings; automatic control
+                    may later override them.'
+              - entity: script.test_hold_soc_status
+                name: 'TEST: Check Status'
+                confirmation:
+                  text: 'Run test: check status? This changes battery operating settings; automatic control may
+                    later override them.'
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Control Flags
+            show_header_toggle: false
+            entities:
+              - entity: input_boolean.battery_charging_active
+                type: simple-entity
+                tap_action:
+                  action: none
+                hold_action:
+                  action: none
+                double_tap_action:
+                  action: none
+              - entity: input_boolean.battery_no_discharging_active
+                type: simple-entity
+                tap_action:
+                  action: none
+                hold_action:
+                  action: none
+                double_tap_action:
+                  action: none
+              - entity: input_boolean.battery_automation_on
+              - entity: input_boolean.manual_battery_charge
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: entities
+            title: Advanced Modbus Controls
+            show_header_toggle: false
+            entities:
+              - entity: script.set_limited_discharge
+                name: Set Limited Discharge
+                confirmation:
+                  text: Run set limited discharge? This changes battery operating settings; automatic control may
+                    later override them.
+              - entity: script.half_regular_charge
+                name: Half Regular Charge
+                confirmation:
+                  text: Run half regular charge? This changes battery operating settings; automatic control may
+                    later override them.
+              - entity: script.discharge_at_half_rate
+                name: Discharge at Half Rate
+                confirmation:
+                  text: Run discharge at half rate? This changes battery operating settings; automatic control may
+                    later override them.
+              - entity: script.set_dynamic_discharge_limit
+                name: Dynamic Discharge Limit
+                confirmation:
+                  text: Run dynamic discharge limit? This changes battery operating settings; automatic control
+                    may later override them.
+            grid_options:
+              columns: full
+              rows: auto
+          - type: markdown
+            title: System Architecture
+            content: |
+              ## Energy Flow System
 
-      # --- SANKEY DEBUG ---
-      - type: entities
-        title: "🔍 Sankey Chart Status"
-        show_header_toggle: false
-        entities:
-          - entity: sensor.sankey_entity_check
-            name: Entity Check Status
-            icon: mdi:check-circle
-          - type: attribute
-            entity: sensor.sankey_entity_check
-            attribute: available_count
-            name: Available Entities
-          - type: attribute
-            entity: sensor.sankey_entity_check
-            attribute: total_entities
-            name: Total Entities
-          - entity: sensor.sankey_debug_info
-            name: Diagnosis
-          - type: divider
-          - entity: sensor.total_solar_power
-            name: Total Solar
-            secondary_info: last-changed
-          - entity: sensor.grid_power
-            name: Grid Power
-            secondary_info: last-changed
-          - entity: sensor.battery_power
-            name: Battery Power
-            secondary_info: last-changed
-          - entity: sensor.house_consumption
-            name: House Consumption
-            secondary_info: last-changed
+              ### ☀️ Solar Production
+              - **Fronius Gen24 6.0**: Main solar system (up to 6 kW)
+              - **Deye Balkonkraftwerk**: Balcony power plant (800W)
+              - **Combined Capacity**: 6.8 kW
 
-      # --- ALL ENTITY VALUES ---
-      - type: entities
-        title: "🔧 All Sankey Entity Values"
-        show_header_toggle: false
-        state_color: true
-        entities:
-          - type: section
-            label: Primary Sources
-          - entity: sensor.total_solar_power
-            name: Total Solar Power
-            secondary_info: last-changed
-          - entity: sensor.fronius_solar_power
-            name: "  └─ Fronius"
-            secondary_info: last-changed
-          - entity: sensor.balkonkraftwerk_power
-            name: "  └─ Balkonkraftwerk"
-            secondary_info: last-changed
-          - entity: sensor.grid_power
-            name: Grid Power
-            secondary_info: last-changed
-          - entity: sensor.battery_power
-            name: Battery Power
-            secondary_info: last-changed
-          - type: divider
-          - type: section
-            label: Flow Sensors
-          - entity: sensor.solar_to_house
-            name: "Solar → House"
-            secondary_info: last-changed
-          - entity: sensor.solar_to_battery
-            name: "Solar → Battery"
-            secondary_info: last-changed
-          - entity: sensor.solar_to_grid
-            name: "Solar → Grid"
-            secondary_info: last-changed
-          - entity: sensor.grid_to_house
-            name: "Grid → House"
-            secondary_info: last-changed
-          - entity: sensor.grid_to_battery
-            name: "Grid → Battery"
-            secondary_info: last-changed
-          - entity: sensor.battery_to_house
-            name: "Battery → House"
-            secondary_info: last-changed
-          - type: divider
-          - type: section
-            label: Consumption
-          - entity: sensor.house_consumption
-            name: House Consumption
-            secondary_info: last-changed
-          - entity: sensor.wallbox_power
-            name: Wallbox Power
-            secondary_info: last-changed
-          - type: divider
-          - type: section
-            label: Supporting Sensors
-          - entity: sensor.charging_state
-            name: Charging State
-          - entity: sensor.reading_energy_main_meter
-            name: Main Meter Reading
-            secondary_info: last-changed
-          - entity: sensor.reading_energy_inverter_ac_output
-            name: Inverter AC Output
-            secondary_info: last-changed
+              ### 🔋 Energy Storage
+              - **Battery**: BYD Battery Pack (~10 kWh)
+              - **Inverter**: Fronius Gen24 6.0
+              - **Control**: Smart charging via Modbus TCP
 
-      # --- FRONIUS DEBUG ---
-      - type: entities
-        title: "Fronius Details"
-        show_header_toggle: false
-        entities:
-          - entity: sensor.reading_energy_inverter_ac_output
-            name: AC Output Power
-          - entity: sensor.reading_energy_main_meter
-            name: Main Meter Reading
-          - entity: sensor.batterie_soc
-            name: Battery SoC
-
-      # --- TEST SCRIPTS ---
-      - type: entities
-        title: "🧪 Hold SOC Test Scripts"
-        show_header_toggle: false
-        entities:
-          - entity: script.test_hold_soc_enable
-            name: "TEST: Enable Hold SOC"
-          - entity: script.test_hold_soc_disable
-            name: "TEST: Disable Hold SOC"
-          - entity: script.test_hold_soc_status
-            name: "TEST: Check Status"
-
-      # --- ALL CONTROL FLAGS ---
-      - type: entities
-        title: "Control Flags"
-        show_header_toggle: false
-        entities:
-          - entity: input_boolean.battery_charging_active
-          - entity: input_boolean.battery_no_discharging_active
-          - entity: input_boolean.battery_automation_on
-          - entity: input_boolean.manual_battery_charge
-
-      # --- ADVANCED MODBUS ---
-      - type: entities
-        title: "Advanced Modbus Controls"
-        show_header_toggle: false
-        entities:
-          - entity: script.set_limited_discharge
-            name: Set Limited Discharge
-          - entity: script.half_regular_charge
-            name: Half Regular Charge
-          - entity: script.discharge_at_half_rate
-            name: Discharge at Half Rate
-          - entity: script.set_dynamic_discharge_limit
-            name: Dynamic Discharge Limit
-
-      # --- SYSTEM ARCHITECTURE ---
-      - type: markdown
-        title: "📐 System Architecture"
-        content: |
-          ## Energy Flow System
-
-          ### ☀️ Solar Production
-          - **Fronius Gen24 6.0**: Main solar system (up to 6 kW)
-          - **Deye Balkonkraftwerk**: Balcony power plant (800W)
-          - **Combined Capacity**: 6.8 kW
-
-          ### 🔋 Energy Storage
-          - **Battery**: BYD Battery Pack (~10 kWh)
-          - **Inverter**: Fronius Gen24 6.0
-          - **Control**: Smart charging via Modbus TCP
-
-          ### ⚡ Distribution
-          - **House**: General consumption (~14 kWh/day)
-          - **Wallbox**: Wattpilot EV charging
-          - **Grid**: Tibber variable pricing (15-min intervals)
-
-  # =========================================================================
-  # VIEW 8: ALGORITHM DEBUG — Deep diagnostic data for remote troubleshooting
-  # =========================================================================
+              ### ⚡ Distribution
+              - **House**: General consumption (~14 kWh/day)
+              - **Wallbox**: Wattpilot EV charging
+              - **Grid**: Tibber variable pricing (15-min intervals)
+            grid_options:
+              columns: full
+              rows: auto
+    subview: true
+    back_path: /energy-overview/configuration
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
+        content: |-
+          # Debug
+          Device readings and system diagnostics.
   - title: Algorithm Debug
     path: algorithm_debug
     icon: mdi:chart-timeline-variant-shimmer
-    cards:
-      # --- ALGORITHM INTERNALS (raw calculation_data) ---
-      - type: markdown
-        title: "🔬 Algorithm Internals"
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 1
+        cards:
+          - type: markdown
+            title: Algorithm Internals
+            content: |
+              {% set data = state_attr('sensor.battery_optimization_data', 'calculation_data') %}
+              {% if data %}
+              **Raw State:** `{{ states('sensor.battery_optimization_data') }}`
+              **Decision:** {{ data.decision_reason }}
+
+              | Field | Value | Field | Value |
+              |-------|-------|-------|-------|
+              | bridge_type | {{ data.bridge_type }} | bridge_hours | {{ data.bridge_hours }}h |
+              | bridge_consumption | {{ data.bridge_consumption_wh }} Wh | energy_deficit | {{ data.energy_deficit_wh }} Wh |
+              | expected_solar | {{ data.expected_solar_wh }} Wh | effective_solar | {{ data.effective_solar_wh }} Wh |
+              | usable_solar | {{ data.usable_solar_wh }} Wh | is_low_solar | {{ data.is_low_solar_day }} |
+              | current_price | {{ data.current_price_cents }} ct | next_price | {{ data.next_price_cents }} ct |
+              | price_drop | {{ data.price_drop_cents }} ct | percentile | {{ data.price_percentile }}% |
+              | max_grid_target | {{ data.max_grid_target }}% | current_hour | {{ data.current_hour }} |
+              | is_weekend | {{ data.is_weekend }} | wake_hour | {{ data.wake_hour }} |
+
+              **computed_target_soc:** {{ states('sensor.computed_target_soc') }}%
+              **battery_target_soc (input):** {{ states('input_number.battery_target_soc') }}%
+              **batterie_soc:** {{ states('sensor.batterie_soc') }}%
+              **soc_scaled:** {{ states('sensor.reading_energy_battery_soc_scaled') }}
+              {% else %}
+              ⚠️ `calculation_data` attribute is empty or unavailable
+              {% endif %}
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Control Flags (with last-changed)
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - type: section
+                label: Input Boolean Flags
+              - entity: input_boolean.battery_charging_active
+                name: battery_charging_active
+                secondary_info: last_changed
+                type: simple-entity
+                tap_action:
+                  action: none
+                hold_action:
+                  action: none
+                double_tap_action:
+                  action: none
+              - entity: input_boolean.battery_no_discharging_active
+                name: battery_no_discharging_active
+                secondary_info: last_changed
+                type: simple-entity
+                tap_action:
+                  action: none
+                hold_action:
+                  action: none
+                double_tap_action:
+                  action: none
+              - entity: input_boolean.battery_automation_on
+                name: battery_automation_on
+                secondary_info: last_changed
+              - entity: input_boolean.manual_battery_charge
+                name: manual_battery_charge
+                secondary_info: last_changed
+              - type: divider
+              - type: section
+                label: Decision Binary Sensors
+              - entity: binary_sensor.should_start_charging
+                name: should_start_charging
+                secondary_info: last_changed
+              - entity: binary_sensor.should_stop_charging
+                name: should_stop_charging
+                secondary_info: last_changed
+              - entity: binary_sensor.should_hold_battery_soc
+                name: should_hold_battery_soc
+                secondary_info: last_changed
+              - entity: binary_sensor.should_prevent_discharge
+                name: should_prevent_discharge
+                secondary_info: last_changed
+              - entity: binary_sensor.battery_charging_is_profitable_enhanced
+                name: is_profitable_enhanced
+                secondary_info: last_changed
+              - entity: binary_sensor.should_charge_battery_during_car_charging
+                name: charge_during_car
+                secondary_info: last_changed
+              - entity: binary_sensor.car_charging_stable
+                name: car_charging_stable
+                secondary_info: last_changed
+              - type: divider
+              - type: section
+                label: Mode Sensors
+              - entity: sensor.battery_control_mode
+                name: battery_control_mode
+                secondary_info: last_changed
+              - entity: sensor.battery_control_status
+                name: battery_control_status
+                secondary_info: last_changed
+              - entity: sensor.charging_state
+                name: charging_state (Modbus)
+                secondary_info: last_changed
+              - entity: sensor.discharge_limit_percentage
+                name: discharge_limit_percentage
+                secondary_info: last_changed
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: markdown
+            title: Price Data Health
+            content: |
+              {% set today = state_attr('sensor.tibber_energy_prices', 'today') %}
+              {% set tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
+              **Current Price:** {{ states('sensor.tibber_energy_prices') }} EUR/kWh ({{ (states('sensor.tibber_energy_prices') | float(0) * 100) | round(2) }} ct)
+              **Sensor State:** {{ states('sensor.tibber_energy_prices') }}
+              **Last Updated:** {{ states.sensor.tibber_energy_prices.last_changed if states.sensor.tibber_energy_prices else 'N/A' }}
+
+              | Data Set | Count | Available |
+              |----------|-------|-----------|
+              | Today | {{ today | length if today else 'N/A' }} | {{ '✅' if today else '❌' }} |
+              | Tomorrow | {{ tomorrow | length if tomorrow else 'N/A' }} | {{ '✅' if tomorrow else '❌' }} |
+
+              **Derived Price Sensors:**
+              | Sensor | Value | Last Changed |
+              |--------|-------|-------------|
+              | Lowest (24h) | {{ states('sensor.tibber_energy_lowest_price_next_24_hours') }} ct | {{ states.sensor.tibber_energy_lowest_price_next_24_hours.last_changed | default('N/A') }} |
+              | Highest (24h) | {{ states('sensor.tibber_energy_highest_price_next_24_hours') }} ct | {{ states.sensor.tibber_energy_highest_price_next_24_hours.last_changed | default('N/A') }} |
+              | Average (12h) | {{ states('sensor.tibber_energy_average_price_next_12_hours') }} ct | {{ states.sensor.tibber_energy_average_price_next_12_hours.last_changed | default('N/A') }} |
+              | Percentile (12h) | {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}% | {{ states.sensor.tibber_energy_price_percentile_next_12_hours.last_changed | default('N/A') }} |
+              | Next Hour | {{ states('sensor.tibber_energy_price_next_hour') }} ct | {{ states.sensor.tibber_energy_price_next_hour.last_changed | default('N/A') }} |
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Inverter & Modbus State
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - type: section
+                label: Battery
+              - entity: sensor.batterie_soc
+                name: SoC (display %)
+                secondary_info: last_changed
+              - entity: sensor.reading_energy_battery_soc_scaled
+                name: SoC (raw scaled)
+                secondary_info: last_changed
+              - entity: sensor.battery_power
+                name: Battery Power (W)
+                secondary_info: last_changed
+              - entity: sensor.charging_state
+                name: ChaSt Register
+                secondary_info: last_changed
+              - type: divider
+              - type: section
+                label: Control Registers
+              - entity: switch.storctl_mod
+                name: StorCtl_Mod (storage control)
+                secondary_info: last_changed
+              - type: divider
+              - type: section
+                label: Inverter
+              - entity: sensor.reading_energy_inverter_ac_output
+                name: AC Output
+                secondary_info: last_changed
+              - entity: sensor.reading_energy_main_meter
+                name: Main Meter
+                secondary_info: last_changed
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: markdown
+            title: Solar Forecast Debug
+            content: |
+              **Remaining Today:** {{ (states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000) | round(0) }} Wh
+              **Forecast Next Hours:** {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=0) | round(0) }} Wh
+              **Low Solar Threshold:** {{ states('input_number.low_solar_threshold_wh') }} Wh
+
+              **Flags:**
+              | Flag | State |
+              |------|-------|
+              | expected_sun_low | {{ states('binary_sensor.expected_sun_low') }} |
+              | expected_sun_very_low | {{ states('binary_sensor.expected_sun_very_low') }} |
+
+              **Fronius DC Power:**
+              | Source | Power |
+              |--------|-------|
+              | Fronius Solar | {{ states('sensor.fronius_solar_power') }} W |
+              | Balkonkraftwerk | {{ states('sensor.balkonkraftwerk_power') }} W |
+              | Total Solar | {{ states('sensor.total_solar_power') }} W |
+            grid_options:
+              columns: full
+              rows: auto
+          - type: history-graph
+            title: Flag Transitions (24h)
+            hours_to_show: 24
+            entities:
+              - entity: input_boolean.battery_charging_active
+                name: Charging Active
+              - entity: input_boolean.battery_no_discharging_active
+                name: Discharge Limited
+              - entity: binary_sensor.should_start_charging
+                name: Should Start
+              - entity: binary_sensor.should_stop_charging
+                name: Should Stop
+              - entity: binary_sensor.should_hold_battery_soc
+                name: Should Hold
+              - entity: binary_sensor.should_prevent_discharge
+                name: Should Prevent Discharge
+              - entity: binary_sensor.battery_charging_is_profitable_enhanced
+                name: Is Profitable
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: history-graph
+            title: SoC vs Targets (48h)
+            hours_to_show: 48
+            entities:
+              - entity: sensor.batterie_soc
+                name: SoC (%)
+              - entity: sensor.computed_target_soc
+                name: Smart Target (%)
+              - entity: input_number.battery_target_soc
+                name: Active Target (%)
+              - entity: input_number.soc_target_default
+                name: Default Minimum (%)
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Car / Wallbox Debug
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: sensor.wattpilot_carconnected
+                name: wattpilot_carconnected
+                secondary_info: last_changed
+              - entity: select.wattpilot_charging_mode
+                name: wattpilot_charging_mode
+                secondary_info: last_changed
+              - entity: sensor.wallbox_power
+                name: wallbox_power
+                secondary_info: last_changed
+              - entity: binary_sensor.car_charging_stable
+                name: car_charging_stable
+                secondary_info: last_changed
+              - entity: binary_sensor.should_charge_battery_during_car_charging
+                name: charge_during_car
+                secondary_info: last_changed
+            grid_options:
+              columns: full
+              rows: auto
+      - type: grid
+        column_span: 1
+        cards:
+          - type: markdown
+            title: Config Snapshot
+            content: |
+              | Parameter | Value | Parameter | Value |
+              |-----------|-------|-----------|-------|
+              | battery_capacity | {{ states('input_number.battery_capacity_wh') }} Wh | soc_target_default | {{ states('input_number.soc_target_default') }}% |
+              | soc_hist | {{ states('input_number.soc_hist') }}% | hold_threshold | {{ states('input_number.battery_hold_threshold') }}% |
+              | wear_cost | {{ states('input_number.battery_wear_cost_per_kwh') }} ct | low_solar_thresh | {{ states('input_number.low_solar_threshold_wh') }} Wh |
+              | night_rate | {{ states('input_number.night_consumption_rate_wh') }} Wh/h | day_rate | {{ states('input_number.day_consumption_rate_wh') }} Wh/h |
+              | weekday_wake | {{ states('input_number.weekday_wake_hour') }} | weekend_wake | {{ states('input_number.weekend_wake_hour') }} |
+              | sleep_hour | {{ states('input_number.sleep_hour') }} | car_hysteresis | {{ states('input_number.car_charging_hysteresis_minutes') }} min |
+              | charge_rate_max | {{ states('input_number.battery_charge_rate_max') }} | grid_capacity | {{ states('input_number.grid_connection_capacity') }} |
+            grid_options:
+              columns: full
+              rows: auto
+    subview: true
+    back_path: /energy-overview/configuration
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
+        content: |-
+          # Algorithm Debug
+          Detailed calculations and control history.
+  - title: Manual service actions
+    path: manual_controls
+    icon: mdi:gesture-tap-button
+    type: sections
+    max_columns: 3
+    dense_section_placement: false
+    theme: Energy calm
+    sections:
+      - type: grid
+        column_span: 1
+        cards:
+          - type: markdown
+            title: Manual service actions
+            content: These actions directly change battery operation. For everyday charging, use the manual charging
+              switch and target on Overview. Automatic control may subsequently change service settings.
+            grid_options:
+              columns: full
+              rows: auto
+          - type: entities
+            title: Manual Control Scripts
+            show_header_toggle: false
+            entities:
+              - entity: script.start_battery_charging
+                name: Start Charging
+                icon: mdi:battery-charging
+                confirmation:
+                  text: Run start charging? This changes battery operating settings; automatic control may later
+                    override them.
+              - entity: script.stop_battery_charging
+                name: Stop Charging
+                icon: mdi:battery-off
+                confirmation:
+                  text: Run stop charging? This changes battery operating settings; automatic control may later
+                    override them.
+              - entity: script.start_limit_discharging
+                name: Limit Discharge
+                icon: mdi:battery-lock
+                confirmation:
+                  text: Run limit discharge? This changes battery operating settings; automatic control may later
+                    override them.
+              - entity: script.stop_limit_discharging
+                name: Stop Limit Discharge
+                icon: mdi:battery-unlock
+                confirmation:
+                  text: Run stop limit discharge? This changes battery operating settings; automatic control may
+                    later override them.
+              - type: divider
+              - entity: script.set_regular_charge
+                name: Set Regular Charge
+                confirmation:
+                  text: Run set regular charge? This changes battery operating settings; automatic control may later
+                    override them.
+              - entity: script.forced_half_recharge
+                name: Force Half Recharge
+                confirmation:
+                  text: Run force half recharge? This changes battery operating settings; automatic control may
+                    later override them.
+              - entity: script.forced_full_recharge
+                name: Force Full Recharge
+                confirmation:
+                  text: Run force full recharge? This changes battery operating settings; automatic control may
+                    later override them.
+              - entity: script.charge_battery_reduced_rate
+                name: Reduced Charge Rate
+                confirmation:
+                  text: Run reduced charge rate? This changes battery operating settings; automatic control may
+                    later override them.
+              - entity: script.hold_battery_soc
+                name: Hold Battery SoC
+                confirmation:
+                  text: Run hold battery soc? This changes battery operating settings; automatic control may later
+                    override them.
+            grid_options:
+              columns: full
+              rows: auto
+    subview: true
+    back_path: /energy-overview/configuration
+    header:
+      layout: responsive
+      card:
+        type: markdown
+        text_only: true
         content: |
-          {% set data = state_attr('sensor.battery_optimization_data', 'calculation_data') %}
-          {% if data %}
-          **Raw State:** `{{ states('sensor.battery_optimization_data') }}`
-          **Decision:** {{ data.decision_reason }}
-
-          | Field | Value | Field | Value |
-          |-------|-------|-------|-------|
-          | bridge_type | {{ data.bridge_type }} | bridge_hours | {{ data.bridge_hours }}h |
-          | bridge_consumption | {{ data.bridge_consumption_wh }} Wh | energy_deficit | {{ data.energy_deficit_wh }} Wh |
-          | expected_solar | {{ data.expected_solar_wh }} Wh | effective_solar | {{ data.effective_solar_wh }} Wh |
-          | usable_solar | {{ data.usable_solar_wh }} Wh | is_low_solar | {{ data.is_low_solar_day }} |
-          | current_price | {{ data.current_price_cents }} ct | next_price | {{ data.next_price_cents }} ct |
-          | price_drop | {{ data.price_drop_cents }} ct | percentile | {{ data.price_percentile }}% |
-          | max_grid_target | {{ data.max_grid_target }}% | current_hour | {{ data.current_hour }} |
-          | is_weekend | {{ data.is_weekend }} | wake_hour | {{ data.wake_hour }} |
-
-          **computed_target_soc:** {{ states('sensor.computed_target_soc') }}%
-          **battery_target_soc (input):** {{ states('input_number.battery_target_soc') }}%
-          **batterie_soc:** {{ states('sensor.batterie_soc') }}%
-          **soc_scaled:** {{ states('sensor.reading_energy_battery_soc_scaled') }}
-          {% else %}
-          ⚠️ `calculation_data` attribute is empty or unavailable
-          {% endif %}
-
-      # --- ALL FLAGS AND SENSORS WITH TIMESTAMPS ---
-      - type: entities
-        title: "🚦 Control Flags (with last-changed)"
-        show_header_toggle: false
-        state_color: true
-        entities:
-          - type: section
-            label: "Input Boolean Flags"
-          - entity: input_boolean.battery_charging_active
-            name: "battery_charging_active"
-            secondary_info: last-changed
-          - entity: input_boolean.battery_no_discharging_active
-            name: "battery_no_discharging_active"
-            secondary_info: last-changed
-          - entity: input_boolean.battery_automation_on
-            name: "battery_automation_on"
-            secondary_info: last-changed
-          - entity: input_boolean.manual_battery_charge
-            name: "manual_battery_charge"
-            secondary_info: last-changed
-          - type: divider
-          - type: section
-            label: "Decision Binary Sensors"
-          - entity: binary_sensor.should_start_charging
-            name: "should_start_charging"
-            secondary_info: last-changed
-          - entity: binary_sensor.should_stop_charging
-            name: "should_stop_charging"
-            secondary_info: last-changed
-          - entity: binary_sensor.should_hold_battery_soc
-            name: "should_hold_battery_soc"
-            secondary_info: last-changed
-          - entity: binary_sensor.should_prevent_discharge
-            name: "should_prevent_discharge"
-            secondary_info: last-changed
-          - entity: binary_sensor.battery_charging_is_profitable_enhanced
-            name: "is_profitable_enhanced"
-            secondary_info: last-changed
-          - entity: binary_sensor.should_charge_battery_during_car_charging
-            name: "charge_during_car"
-            secondary_info: last-changed
-          - entity: binary_sensor.car_charging_stable
-            name: "car_charging_stable"
-            secondary_info: last-changed
-          - type: divider
-          - type: section
-            label: "Mode Sensors"
-          - entity: sensor.battery_control_mode
-            name: "battery_control_mode"
-            secondary_info: last-changed
-          - entity: sensor.battery_control_status
-            name: "battery_control_status"
-            secondary_info: last-changed
-          - entity: sensor.charging_state
-            name: "charging_state (Modbus)"
-            secondary_info: last-changed
-          - entity: sensor.discharge_limit_percentage
-            name: "discharge_limit_percentage"
-            secondary_info: last-changed
-
-      # --- PRICE DATA HEALTH ---
-      - type: markdown
-        title: "💰 Price Data Health"
-        content: |
-          {% set today = state_attr('sensor.tibber_energy_prices', 'today') %}
-          {% set tomorrow = state_attr('sensor.tibber_energy_prices', 'tomorrow') %}
-          **Current Price:** {{ states('sensor.tibber_energy_prices') }} EUR/kWh ({{ (states('sensor.tibber_energy_prices') | float(0) * 100) | round(2) }} ct)
-          **Sensor State:** {{ states('sensor.tibber_energy_prices') }}
-          **Last Updated:** {{ states.sensor.tibber_energy_prices.last_changed if states.sensor.tibber_energy_prices else 'N/A' }}
-
-          | Data Set | Count | Available |
-          |----------|-------|-----------|
-          | Today | {{ today | length if today else 'N/A' }} | {{ '✅' if today else '❌' }} |
-          | Tomorrow | {{ tomorrow | length if tomorrow else 'N/A' }} | {{ '✅' if tomorrow else '❌' }} |
-
-          **Derived Price Sensors:**
-          | Sensor | Value | Last Changed |
-          |--------|-------|-------------|
-          | Lowest (24h) | {{ states('sensor.tibber_energy_lowest_price_next_24_hours') }} ct | {{ states.sensor.tibber_energy_lowest_price_next_24_hours.last_changed | default('N/A') }} |
-          | Highest (24h) | {{ states('sensor.tibber_energy_highest_price_next_24_hours') }} ct | {{ states.sensor.tibber_energy_highest_price_next_24_hours.last_changed | default('N/A') }} |
-          | Average (12h) | {{ states('sensor.tibber_energy_average_price_next_12_hours') }} ct | {{ states.sensor.tibber_energy_average_price_next_12_hours.last_changed | default('N/A') }} |
-          | Percentile (12h) | {{ states('sensor.tibber_energy_price_percentile_next_12_hours') }}% | {{ states.sensor.tibber_energy_price_percentile_next_12_hours.last_changed | default('N/A') }} |
-          | Next Hour | {{ states('sensor.tibber_energy_price_next_hour') }} ct | {{ states.sensor.tibber_energy_price_next_hour.last_changed | default('N/A') }} |
-
-      # --- INVERTER / MODBUS STATE ---
-      - type: entities
-        title: "🔌 Inverter & Modbus State"
-        show_header_toggle: false
-        state_color: true
-        entities:
-          - type: section
-            label: "Battery"
-          - entity: sensor.batterie_soc
-            name: "SoC (display %)"
-            secondary_info: last-changed
-          - entity: sensor.reading_energy_battery_soc_scaled
-            name: "SoC (raw scaled)"
-            secondary_info: last-changed
-          - entity: sensor.battery_power
-            name: "Battery Power (W)"
-            secondary_info: last-changed
-          - entity: sensor.charging_state
-            name: "ChaSt Register"
-            secondary_info: last-changed
-          - type: divider
-          - type: section
-            label: "Control Registers"
-          - entity: switch.storctl_mod
-            name: "StorCtl_Mod (storage control)"
-            secondary_info: last-changed
-          - type: divider
-          - type: section
-            label: "Inverter"
-          - entity: sensor.reading_energy_inverter_ac_output
-            name: "AC Output"
-            secondary_info: last-changed
-          - entity: sensor.reading_energy_main_meter
-            name: "Main Meter"
-            secondary_info: last-changed
-
-      # --- SOLAR FORECAST DETAIL ---
-      - type: markdown
-        title: "☀️ Solar Forecast Debug"
-        content: |
-          **Remaining Today:** {{ (states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000) | round(0) }} Wh
-          **Forecast Next Hours:** {{ states('sensor.solcast_pv_forecast_forecast_next_x_hours') | float(default=0) | round(0) }} Wh
-          **Low Solar Threshold:** {{ states('input_number.low_solar_threshold_wh') }} Wh
-
-          **Flags:**
-          | Flag | State |
-          |------|-------|
-          | expected_sun_low | {{ states('binary_sensor.expected_sun_low') }} |
-          | expected_sun_very_low | {{ states('binary_sensor.expected_sun_very_low') }} |
-
-          **Fronius DC Power:**
-          | Source | Power |
-          |--------|-------|
-          | Fronius Solar | {{ states('sensor.fronius_solar_power') }} W |
-          | Balkonkraftwerk | {{ states('sensor.balkonkraftwerk_power') }} W |
-          | Total Solar | {{ states('sensor.total_solar_power') }} W |
-
-      # --- FLAG TRANSITION HISTORY ---
-      - type: history-graph
-        title: "🔄 Flag Transitions (24h)"
-        hours_to_show: 24
-        entities:
-          - entity: input_boolean.battery_charging_active
-            name: Charging Active
-          - entity: input_boolean.battery_no_discharging_active
-            name: Discharge Limited
-          - entity: binary_sensor.should_start_charging
-            name: Should Start
-          - entity: binary_sensor.should_stop_charging
-            name: Should Stop
-          - entity: binary_sensor.should_hold_battery_soc
-            name: Should Hold
-          - entity: binary_sensor.should_prevent_discharge
-            name: Should Prevent Discharge
-          - entity: binary_sensor.battery_charging_is_profitable_enhanced
-            name: Is Profitable
-
-      # --- SOC vs TARGET (detailed) ---
-      - type: history-graph
-        title: "📈 SoC vs Targets (48h)"
-        hours_to_show: 48
-        entities:
-          - entity: sensor.batterie_soc
-            name: SoC (%)
-          - entity: sensor.computed_target_soc
-            name: Smart Target (%)
-          - entity: input_number.battery_target_soc
-            name: Active Target (%)
-          - entity: input_number.soc_target_default
-            name: Default Minimum (%)
-
-      # --- CAR CHARGING ---
-      - type: entities
-        title: "🚗 Car / Wallbox Debug"
-        show_header_toggle: false
-        state_color: true
-        entities:
-          - entity: sensor.wattpilot_carconnected
-            name: "wattpilot_carconnected"
-            secondary_info: last-changed
-          - entity: select.wattpilot_charging_mode
-            name: "wattpilot_charging_mode"
-            secondary_info: last-changed
-          - entity: sensor.wallbox_power
-            name: "wallbox_power"
-            secondary_info: last-changed
-          - entity: binary_sensor.car_charging_stable
-            name: "car_charging_stable"
-            secondary_info: last-changed
-          - entity: binary_sensor.should_charge_battery_during_car_charging
-            name: "charge_during_car"
-            secondary_info: last-changed
-
-      # --- CONFIGURATION SNAPSHOT ---
-      - type: markdown
-        title: "⚙️ Config Snapshot"
-        content: |
-          | Parameter | Value | Parameter | Value |
-          |-----------|-------|-----------|-------|
-          | battery_capacity | {{ states('input_number.battery_capacity_wh') }} Wh | soc_target_default | {{ states('input_number.soc_target_default') }}% |
-          | soc_hist | {{ states('input_number.soc_hist') }}% | hold_threshold | {{ states('input_number.battery_hold_threshold') }}% |
-          | wear_cost | {{ states('input_number.battery_wear_cost_per_kwh') }} ct | low_solar_thresh | {{ states('input_number.low_solar_threshold_wh') }} Wh |
-          | night_rate | {{ states('input_number.night_consumption_rate_wh') }} Wh/h | day_rate | {{ states('input_number.day_consumption_rate_wh') }} Wh/h |
-          | weekday_wake | {{ states('input_number.weekday_wake_hour') }} | weekend_wake | {{ states('input_number.weekend_wake_hour') }} |
-          | sleep_hour | {{ states('input_number.sleep_hour') }} | car_hysteresis | {{ states('input_number.car_charging_hysteresis_minutes') }} min |
-          | charge_rate_max | {{ states('input_number.battery_charge_rate_max') }} | grid_capacity | {{ states('input_number.grid_connection_capacity') }} |
-
+          # Manual service actions
