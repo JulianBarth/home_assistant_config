@@ -35,6 +35,7 @@
         - binary_sensor.should_hold_battery_soc
         - binary_sensor.should_prevent_discharge
         - sensor.computed_target_soc
+        - binary_sensor.grid_control_ready
     - platform: state
       entity_id:
         - input_boolean.manual_battery_charge
@@ -45,6 +46,18 @@
       minutes: "/5"
   action:
     - choose:
+        # Missing data must release ALL battery restrictions, including a
+        # car-only limit or reserve hold with no charging flag set.
+        - conditions:
+            - condition: template
+              value_template: "{{ not is_state('binary_sensor.grid_control_ready', 'on') }}"
+          sequence:
+            - service: script.stop_battery_charging
+            - service: input_boolean.turn_off
+              target:
+                entity_id:
+                  - input_boolean.battery_no_discharging_active
+                  - input_boolean.manual_battery_charge
         # Stop first: target completion and safety also override manual charging.
         - conditions:
             - condition: state
@@ -64,7 +77,7 @@
                       entity_id: binary_sensor.inverter_data_valid
                       state: "on"
                     - condition: state
-                      entity_id: binary_sensor.grid_available
+                      entity_id: binary_sensor.grid_control_ready
                       state: "on"
                   sequence:
                     - service: script.set_dynamic_discharge_limit
@@ -1114,7 +1127,7 @@
         message: >
           {% set d = state_attr('sensor.battery_charge_cycle_tracker', 'data') or {} %}
           {% set c = d.get('last_cycle', {}) %}
-          {"schema":2,"ts":"{{ now().isoformat() }}","type":"outcome","event":"charge_cycle_summary","started":"{{ c.get('started', 'unknown') }}","kwh":{{ c.get('kwh', 0) }},"cost_eur":{{ c.get('cost_eur', 0) }},"counterfactual_eur":{{ c.get('counterfactual_eur', 0) }},"saved_eur":{{ c.get('saved_eur', 0) }},"avg_price_ct":{{ c.get('avg_price_ct', 0) }},"day_avg_ct":{{ c.get('day_avg_ct', 0) }},"soc_end":{{ states('sensor.batterie_soc') | float(0) }},"month_kwh":{{ d.get('month_kwh', 0) }},"month_saved_eur":{{ d.get('month_saved_eur', 0) }}}
+          {"schema":2,"ts":"{{ now().isoformat() }}","type":"outcome","event":"charge_cycle_summary","accounting_version":{{ d.get('accounting_version', 1) }},"unmeasured_seconds":{{ d.get('unmeasured_seconds', 0) }},"started":"{{ c.get('started', 'unknown') }}","kwh":{{ c.get('kwh', 0) }},"cost_eur":{{ c.get('cost_eur', 0) }},"counterfactual_eur":{{ c.get('counterfactual_eur', 0) }},"saved_eur":{{ c.get('saved_eur', 0) }},"avg_price_ct":{{ c.get('avg_price_ct', 0) }},"day_avg_ct":{{ c.get('day_avg_ct', 0) }},"soc_end":{{ states('sensor.batterie_soc') | float(0) }},"month_kwh":{{ d.get('month_kwh', 0) }},"month_saved_eur":{{ d.get('month_saved_eur', 0) }}}
   mode: single
 
 - alias: "Log Solar Forecast vs Actual"
@@ -1158,7 +1171,6 @@
       id: island
     - platform: state
       entity_id: binary_sensor.grid_available
-      from: "off"
       to: "on"
       id: restored
   action:
@@ -1166,6 +1178,9 @@
         - conditions:
             - condition: trigger
               id: island
+            - condition: state
+              entity_id: input_boolean.grid_outage_active
+              state: "off"
           sequence:
             # 0. Record outage start for the duration in the restore
             #    notification (input_datetime survives an HA reboot mid-outage)
@@ -1174,6 +1189,9 @@
                 entity_id: input_datetime.grid_outage_start
               data:
                 datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.grid_outage_active
             # 1. Running boost: lift the Wattpilot's hardware stop to the
             #    island floor (floor_soc attr is island-aware by now). If SoC
             #    is already below it, car_boost_viable flips off and the
@@ -1245,7 +1263,13 @@
         - conditions:
             - condition: trigger
               id: restored
+            - condition: state
+              entity_id: input_boolean.grid_outage_active
+              state: "on"
           sequence:
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.grid_outage_active
             # Running boost: put the hardware stop back to the normal floor
             - if:
                 - condition: state
@@ -1288,19 +1312,20 @@
 # Wattpilot reboots in the switchover gap and reconnects minutes AFTER the
 # guard's one-shot Eco command (which then hit an unavailable entity — warning
 # only). This watchdog re-enforces Eco whenever the wallbox is reachable in a
-# non-Eco mode while the island is active: on reconnect, on a manual mode
-# change, and every 5 minutes as a belt.
+# non-Eco mode while grid control is unsafe (island OR uncertain): on
+# reconnect, on permission loss, on a manual mode change, and every 5 minutes.
 - alias: "Grid Outage Wallbox Watchdog"
-  description: "Re-forces the Wattpilot to Eco if it (re)appears in a non-Eco mode during Inselbetrieb"
+  description: "Keeps the wallbox in Eco whenever grid availability is not confirmed"
   trigger:
     - platform: state
-      entity_id: select.wattpilot_charging_mode
+      entity_id:
+        - select.wattpilot_charging_mode
+        - binary_sensor.grid_control_ready
     - platform: time_pattern
       minutes: "/5"
   condition:
-    - condition: state
-      entity_id: binary_sensor.grid_available
-      state: "off"
+    - condition: template
+      value_template: "{{ not is_state('binary_sensor.grid_control_ready', 'on') }}"
     - condition: template
       value_template: >
         {{ states('select.wattpilot_charging_mode')
@@ -1317,16 +1342,7 @@
     - service: notify.battery_log
       data:
         message: >
-          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"island_wallbox_enforced","from_mode":"{{ trigger.from_state.state if (trigger.platform == 'state' and trigger.from_state) else 'periodic_check' }}","soc":{{ states('sensor.batterie_soc') | float(0) }}}
-    - service: notify.mobile_app_f4gdn4ry0gpq_2
-      data:
-        title: "🏝️ Wallbox → Eco erzwungen"
-        message: >-
-          Wallbox war während des Inselbetriebs nicht in Eco
-          (SoC {{ states('sensor.batterie_soc') }}%) — zurückgestellt.
-        data:
-          tag: grid_outage
-          group: battery
+          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"grid_interlock_wallbox_enforced","grid_status":"{{ states('sensor.grid_connection_status') }}","from_mode":"{{ trigger.from_state.state if (trigger.platform == 'state' and trigger.from_state) else 'periodic_check' }}","soc":{{ states('sensor.batterie_soc') | float(0) }}}
   mode: single
   max_exceeded: silent
 
@@ -1359,3 +1375,16 @@
         entity_id: select.wattpilot_charging_mode
   mode: single
   max_exceeded: silent
+
+- alias: "Grid Connection Status Logger"
+  description: "Distinguishes missing readings from confirmed island evidence"
+  trigger:
+    - platform: state
+      entity_id: sensor.grid_connection_status
+  action:
+    - service: notify.battery_log
+      data:
+        message: >
+          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"connection_status_changed","status":"{{ states('sensor.grid_connection_status') }}","frequency":"{{ states('sensor.grid_frequency') }}","meter":"{{ states('sensor.reading_energy_main_meter') }}"}
+  mode: queued
+  max: 5

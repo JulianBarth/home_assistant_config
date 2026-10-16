@@ -31,6 +31,8 @@ The automations and scripts make use of the following Home Assistant integration
 6. **HACS (Home Assistant Community Store)**: Various custom components are installed via HACS, including the **Solar PV Forecast** to estimate solar energy production.
 7. **Modbus Proxy**: A proxy to handle Modbus communication more efficiently is used in this setup.
 
+See [OPERATIONAL_FIXES.md](OPERATIONAL_FIXES.md) for grid uncertainty handling, forecast date selection, power-flow corrections, accounting limits and the structured logger deployment.
+
 ## Current Issues & Areas for Improvement
 The system has undergone significant improvements:
 

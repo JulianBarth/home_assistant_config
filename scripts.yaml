@@ -418,6 +418,9 @@ set_dynamic_discharge_limit:
   alias: "Set Dynamic Discharge Limit"
   description: "Adjust discharge limit based on grid prices and battery SoC"
   sequence:
+    # A watchdog dispatched before data loss must not reapply a limit later.
+    - condition: template
+      value_template: "{{ is_state('binary_sensor.grid_control_ready', 'on') }}"
     - service: modbus.write_register
       data:
         hub: fronius1
@@ -450,7 +453,7 @@ charge_battery_to_target:
     - condition: template
       value_template: >
         {{ is_state('binary_sensor.inverter_data_valid', 'on')
-           and not is_state('binary_sensor.grid_available', 'off')
+           and is_state('binary_sensor.grid_control_ready', 'on')
            and states('sensor.reading_energy_battery_soc_scaled') | float(0)
                < states('input_number.battery_target_soc') | float(0) * 100 }}
     - choose:

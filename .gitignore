@@ -21,3 +21,12 @@ home-assistant_v2.db
 *.db
 secrets.yaml
 evcc.yaml
+
+# Diagnostic-safe structured logger and regression tests
+!tools/
+!tools/battery_log.py
+!tests/test_operational_fixes.py
+
+# Local diagnostics contain private logs and installation snapshots.
+diagnostics/
+*.tar.gz

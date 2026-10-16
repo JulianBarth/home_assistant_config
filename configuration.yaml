@@ -33,6 +33,9 @@ lovelace:
 # NOTE: no `initial:` on helpers — HA would reset them to that value on every
 # restart, silently wiping UI-tuned parameters. Values now persist via restore.
 input_boolean:
+  grid_outage_active:
+    name: Confirmed Grid Outage Active
+    icon: mdi:transmission-tower-off
   battery_charging_active:
     name: Battery Charging Active
     icon: mdi:battery-charging
@@ -403,7 +406,7 @@ utility_meter:
 command_line:
   - notify:
       name: battery_log
-      command: "sh -c 'cat >> /config/battery_algorithm.log; echo >> /config/battery_algorithm.log'"
+      command: "python3 /config/tools/battery_log.py"
 
 # Archive the algorithm log monthly (called by automation on the 1st).
 # Archives instead of truncating: the discarded lines are exactly the data
@@ -411,9 +414,7 @@ command_line:
 # is the month that just ended.
 shell_command:
   rotate_battery_log: >
-    sh -c 'mv /config/battery_algorithm.log /config/battery_algorithm-{{ (now() - timedelta(days=1)).strftime("%Y-%m") }}.log
-    && gzip -f /config/battery_algorithm-{{ (now() - timedelta(days=1)).strftime("%Y-%m") }}.log;
-    touch /config/battery_algorithm.log'
+    python3 /config/tools/battery_log.py --rotate {{ (now() - timedelta(days=1)).strftime("%Y-%m") }}
 
 automation: !include automations.yaml
 script: !include scripts.yaml

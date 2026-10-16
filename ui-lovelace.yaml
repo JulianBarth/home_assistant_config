@@ -87,6 +87,10 @@ views:
                 name: Battery State
               - entity: sensor.battery_control_mode
                 name: Control Mode
+              - entity: sensor.grid_connection_status
+                name: Grid Connection
+              - entity: binary_sensor.grid_control_ready
+                name: Grid Charging Ready
                 icon: mdi:state-machine
               - entity: sensor.computed_target_soc
                 name: Smart Target SoC
@@ -153,6 +157,7 @@ views:
         series:
           - entity: sensor.tibber_cached_energy_prices
             name: Price
+            unit: ct/kWh
             yaxis_id: price
             color: '#2196F3'
             type: line
@@ -163,6 +168,7 @@ views:
               return prices.map(p => [new Date(p.startsAt).getTime(), Math.round(p.total * 10000) / 100]);
           - entity: input_number.car_cheap_grid_max_price_ct
             name: Cheap-grid ceiling
+            unit: ct/kWh
             yaxis_id: price
             color: '#4CAF50'
             type: line
@@ -174,6 +180,7 @@ views:
               return [[start.getTime(), v], [end.getTime(), v]];
           - entity: sensor.solcast_pv_forecast_prognose_heute
             name: Solar forecast
+            unit: kW
             yaxis_id: solar
             color: '#FFB300'
             type: area
@@ -247,18 +254,20 @@ views:
 
       # --- SAVINGS TILE ---
       - type: markdown
-        title: "💶 Charging Savings"
+        title: "💶 Grid Charging Price Comparison"
         content: |
           {% set d = state_attr('sensor.battery_charge_cycle_tracker', 'data') %}
           {% if d and d.month_cycles | default(0) > 0 %}
-          **This month:** {{ d.month_kwh }} kWh grid-charged in {{ d.month_cycles }}
+          **This month:** {{ d.month_kwh | round(2) }} kWh estimated grid charge in {{ d.month_cycles }}
           cycle{{ 's' if d.month_cycles != 1 }} for {{ d.month_cost_eur | round(2) }} € —
-          **≈ {{ d.month_saved_eur | round(2) }} € saved** vs day-average prices.
+          **{{ d.month_saved_eur | round(2) }} € price advantage** vs day-average prices.
+          Estimate before storage losses, wear and export opportunity cost.
+          Measured since {{ d.get('measured_since', 'unknown') }}; earlier totals are retained separately.
           {% set c = d.last_cycle %}
           {% if c %}
 
           Last cycle: {{ c.kwh }} kWh @ {{ c.avg_price_ct }} ct/kWh
-          (day avg {{ c.day_avg_ct }} ct) → {{ c.saved_eur | round(2) }} € saved.
+          (day avg {{ c.day_avg_ct }} ct) → {{ c.saved_eur | round(2) }} € price advantage.
           {% endif %}
           {% else %}
           *No completed charge cycles this month yet.*
@@ -598,6 +607,7 @@ views:
         series:
           - entity: sensor.tibber_energy_prices
             name: Price
+            unit: ct/kWh
             yaxis_id: price
             color: '#2196F3'
             curve: stepline

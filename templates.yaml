@@ -10,8 +10,9 @@
       icon: mdi:home-battery-outline
       unit_of_measurement: "%"
       device_class: battery
+      availability: "{{ is_number(states('sensor.reading_energy_battery_soc_scaled')) }}"
       state: >
-        {{ ((states('sensor.reading_energy_battery_soc_scaled') | float) * (10 ** -2 )) | round(0)}}
+        {{ (states('sensor.reading_energy_battery_soc_scaled') | float(0) / 100) | round(0) }}
 
     - name: "Charging State"
       unique_id: adf7fd02-94ac-4565-8392-c3b9d3b0d2dc
@@ -55,13 +56,9 @@
         {{ soc not in ['unavailable', 'unknown', 'none', 'None'] and soc | float(default=0) > 0 }}
 
 # ============================================================================
-# Grid outage detection (Inselbetrieb) — two independent signals:
-# 1. AC frequency: the GEN24 runs its backup island at ~53 Hz (grid: 49.8-50.2)
-# 2. Smart Meter loss: the meter sits on the grid side of the transfer switch
-#    and dies in an outage while the inverter registers (slave 1) stay alive.
-# grid_available = off drives the Grid Outage Guard automation and gates the
-# cheap-grid window, force-charging and discharge-limiting. Everything restores
-# declaratively once the sensor has been on again for 5 minutes.
+# Grid classification: missing data is uncertainty, never proof of an outage.
+# The locally verified ~53 Hz backup frequency is positive island evidence.
+# Control permission is separate from the delayed outage notification signal.
 # ============================================================================
 - sensor:
     - name: "Grid Frequency"
@@ -77,24 +74,43 @@
         {{ raw not in ['unavailable', 'unknown']
            and 40 <= (raw | float(default=-1)) <= 70 }}
 
+- sensor:
+    - name: "Grid Connection Status"
+      unique_id: grid_connection_status
+      icon: mdi:transmission-tower
+      state: >
+        {% set freq = states('sensor.grid_frequency') | float(default=-1) %}
+        {% set meter = states('sensor.reading_energy_main_meter') %}
+        {% if 51.5 <= freq <= 60 %}
+          island
+        {% elif 49 <= freq <= 51 and is_number(meter)
+                and is_state('binary_sensor.inverter_data_valid', 'on') %}
+          grid
+        {% else %}
+          uncertain
+        {% endif %}
+
 - binary_sensor:
     - name: "Grid Available"
       unique_id: grid_available
       device_class: power
       icon: mdi:transmission-tower
-      # Grid loss confirmed after 1 min; grid return must hold 5 min (returns flap)
+      # Off means confirmed island only; unavailable means insufficient evidence.
+      availability: >
+        {{ states('sensor.grid_connection_status') in ['grid', 'island'] }}
       delay_off:
         minutes: 1
       delay_on:
         minutes: 5
-      state: >
-        {% set freq = states('sensor.grid_frequency') | float(default=0) %}
-        {% set island_by_freq = (45 <= freq <= 60) and freq >= 51.5 %}
-        {% set meter_lost = states('sensor.reading_energy_main_meter') in ['unavailable', 'unknown', 'none'] %}
-        {% set island_by_meter = meter_lost and is_state('binary_sensor.inverter_data_valid', 'on') %}
-        {# Fail-open: if BOTH signals are unavailable (full Modbus outage) this #}
-        {# reads "grid ok" — that case is covered by inverter_data_valid gates. #}
-        {{ not (island_by_freq or island_by_meter) }}
+      state: "{{ is_state('sensor.grid_connection_status', 'grid') }}"
+
+    - name: "Grid Control Ready"
+      unique_id: grid_control_ready
+      # Independent delay avoids reusing an old Grid Available state after a
+      # brief unavailable period. Any missing signal revokes permission at once.
+      delay_on:
+        minutes: 5
+      state: "{{ is_state('sensor.grid_connection_status', 'grid') }}"
 
 # Binary sensor for charging conditions
 - binary_sensor:
@@ -140,7 +156,7 @@
 
         {# Island guard: no grid to charge from — a force-charge command would also #}
         {# block discharge and starve the house (applies to the emergency path too) #}
-        {% set grid_ok = not is_state('binary_sensor.grid_available', 'off') %}
+        {% set grid_ok = is_state('binary_sensor.grid_control_ready', 'on') %}
 
         {{ (basic_conditions or (emergency_reserve and automation_on and charging_inactive)) and car_safe and grid_ok }}
         {% endif %}
@@ -152,7 +168,7 @@
         {% set manual = is_state('input_boolean.manual_battery_charge', 'on') %}
         {% set charging_active = is_state('input_boolean.battery_charging_active', 'on') %}
         {% set inverter_invalid = not is_state('binary_sensor.inverter_data_valid', 'on') %}
-        {% set grid_down = is_state('binary_sensor.grid_available', 'off') %}
+        {% set grid_down = not is_state('binary_sensor.grid_control_ready', 'on') %}
 
         {% if manual %}
           {# Manual HOME BATTERY charge ignores prices, but ends at the user's
@@ -187,7 +203,7 @@
         {% set target_not_full = target_soc < 9800 %}
 
         {# Island guard: holding SoC limits discharge — deadly for the island #}
-        {% set grid_ok = not is_state('binary_sensor.grid_available', 'off') %}
+        {% set grid_ok = is_state('binary_sensor.grid_control_ready', 'on') %}
 
         {{ approaching_target and target_not_full and grid_ok }}
 
@@ -205,7 +221,7 @@
         {% set hysteresis = states('input_number.soc_hist') | float(default=5) * 100 %}
         {% set data_valid = is_state('binary_sensor.inverter_data_valid', 'on') %}
         {# Island guard: preventing discharge cuts the house off its only supply #}
-        {% set grid_down = is_state('binary_sensor.grid_available', 'off') %}
+        {% set grid_down = not is_state('binary_sensor.grid_control_ready', 'on') %}
 
         {% if not automation_on or not charging_inactive or not data_valid or grid_down %}
           {{ false }}
@@ -299,7 +315,8 @@
         {# === TIME CALCULATIONS === #}
         {% set current_hour = now().hour + (now().minute / 60) %}
         {% set is_weekend = now().weekday() >= 5 %}
-        {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
+        {% set planning_day = now() + timedelta(days=1) if current_hour >= sleep_hour else now() %}
+        {% set wake_hour = weekend_wake if planning_day.weekday() >= 5 else weekday_wake %}
         
         {# === SUNRISE & BREAKFAST GAP === #}
         {% set nr = as_datetime(state_attr('sun.sun','next_rising')) | as_local %}
@@ -320,11 +337,10 @@
         {# Removed absolute price ceiling check #}
         
         {# === SOLAR FORECAST === #}
-        {# At night (after sleep or before solar_start), "remaining today" is 0. #}
-        {# Use tomorrow's forecast instead for overnight headroom decisions. #}
+        {# After midnight the upcoming solar window belongs to today. #}
         {% set remaining_today_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000 %}
         {% set forecast_tomorrow_wh = states('sensor.solcast_pv_forecast_prognose_morgen') | float(default=0) * 1000 %}
-        {% if current_hour >= sleep_hour or current_hour < solar_start_hour %}
+        {% if current_hour >= sleep_hour %}
           {% set expected_solar_wh = forecast_tomorrow_wh %}
         {% else %}
           {% set expected_solar_wh = remaining_today_wh %}
@@ -387,7 +403,7 @@
         
         {# === FIX: Cap target so grid charging leaves room for free solar === #}
         {# Don't grid-charge to 90% if solar will push it to 100% anyway #}
-        {# At night, usable_solar is 0 here, but we check tomorrow's potential headroom #}
+        {# At night, usable_solar is 0 here; check the upcoming solar window #}
         {% if current_hour < solar_start_hour or current_hour >= sleep_hour %}
           {# Night/Evening: use the solar from the upcoming day for headroom #}
           {% set headroom_solar = effective_solar %}
@@ -457,10 +473,11 @@
           
           {% set current_hour = now().hour + (now().minute / 60) %}
           {% set is_weekend = now().weekday() >= 5 %}
-          {% set wake_hour = weekend_wake if is_weekend else weekday_wake %}
+          {% set planning_day = now() + timedelta(days=1) if current_hour >= sleep_hour else now() %}
+          {% set wake_hour = weekend_wake if planning_day.weekday() >= 5 else weekday_wake %}
           {% set remaining_today_wh = states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute') | float(default=0) * 1000 %}
           {% set forecast_tomorrow_wh = states('sensor.solcast_pv_forecast_prognose_morgen') | float(default=0) * 1000 %}
-          {% if current_hour >= sleep_hour or current_hour < solar_start_hour %}
+          {% if current_hour >= sleep_hour %}
             {% set expected_solar_wh = forecast_tomorrow_wh %}
           {% else %}
             {% set expected_solar_wh = remaining_today_wh %}
@@ -693,7 +710,9 @@
         {% set should_charge_during_car = is_state('binary_sensor.should_charge_battery_during_car_charging', 'on') %}
 
         {# Priority order: Manual > Car+Battery > Car Only > Battery > Normal #}
-        {% if manual_charge %}
+        {% if not is_state('binary_sensor.grid_control_ready', 'on') %}
+          normal
+        {% elif manual_charge %}
           manual_charging
         {% elif car_charging and wallbox_not_eco and automation_on %}
           {% if (should_charge or is_charging) and should_charge_during_car %}
@@ -1022,7 +1041,7 @@
       state: >
         {% set charging_state = states('sensor.charging_state') %}
         {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
-        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
+        {% set solar_power = states('sensor.fronius_solar_power') | float(default=0) %}
 
         {# Estimate battery power from the inverter-side balance only: the battery #}
         {# sits behind the inverter, so charge power = DC solar minus AC output    #}
@@ -1049,9 +1068,10 @@
         {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
         {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
 
-        {# House consumption = grid import + inverter AC output - wallbox #}
+        {# House consumption = signed grid power + inverter AC output - wallbox #}
         {# The wallbox is grid-fed, so ac_output alone goes negative while the car charges #}
-        {% set house_consumption = [grid_power, 0] | max + ac_output - wallbox_power %}
+        {% set balcony = states('sensor.balkonkraftwerk_power') | float(0) %}
+        {% set house_consumption = grid_power + ac_output + balcony - wallbox_power %}
         {{ [house_consumption, 0] | max | round(0) }}
 
     - name: "Solar To Battery"
@@ -1061,15 +1081,9 @@
       device_class: power
       state_class: measurement
       state: >
-        {% set charging_state = states('sensor.charging_state') %}
-        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
-        
-        {% if charging_state == 'CHARGING' %}
-          {# Solar available for battery charging #}
-          {{ [solar_power, 0] | max | round(0) }}
-        {% else %}
-          0
-        {% endif %}
+        {% set charge = states('sensor.battery_charge_power') | float(0) %}
+        {% set grid_charge = states('sensor.grid_to_battery') | float(0) %}
+        {{ [charge - grid_charge, 0] | max | round(0) }}
 
     - name: "Solar To House"
       unique_id: solar_to_house_flow
@@ -1078,22 +1092,10 @@
       device_class: power
       state_class: measurement
       state: >
-        {% set charging_state = states('sensor.charging_state') %}
-        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
-        {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
-        {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
-        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
-
-        {# Calculate house consumption inline to avoid circular dependency #}
-        {# Same formula as sensor.house_consumption: grid import + AC output - wallbox #}
-        {% set house_consumption = [[grid_power, 0] | max + ac_output - wallbox_power, 0] | max %}
-        
-        {% if charging_state in ['DISCHARGING', 'HOLDING', 'OFF'] %}
-          {# Solar goes to house consumption - take minimum of both #}
-          {{ [solar_power, house_consumption] | min | round(0) }}
-        {% else %}
-          0
-        {% endif %}
+        {% set solar = states('sensor.total_solar_power') | float(0) %}
+        {% set charging = states('sensor.solar_to_battery') | float(0) %}
+        {% set house = states('sensor.house_consumption') | float(0) %}
+        {{ [[solar - charging, 0] | max, house] | min | round(0) }}
 
     - name: "Solar To Grid"
       unique_id: solar_to_grid_flow
@@ -1119,20 +1121,9 @@
       device_class: power
       state_class: measurement
       state: >
-        {% set charging_state = states('sensor.charging_state') %}
-        
-        {# Calculate battery power directly to avoid circular dependency #}
-        {% set solar_power = states('sensor.total_solar_power') | float(default=0) %}
-        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
-        {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
-        
-        {% if charging_state == 'DISCHARGING' %}
-          {# Battery power when discharging #}
-          {% set battery_power = -(ac_output - solar_power - grid_power) %}
-          {{ (battery_power | abs) | round(0) }}
-        {% else %}
-          0
-        {% endif %}
+        {% set discharge = states('sensor.battery_discharge_power') | float(0) %}
+        {% set house = states('sensor.house_consumption') | float(0) %}
+        {{ [discharge, house] | min | round(0) }}
 
     - name: "Grid To House"
       unique_id: grid_to_house_flow
@@ -1141,15 +1132,11 @@
       device_class: power
       state_class: measurement
       state: >
-        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
-        {% set charging_state = states('sensor.charging_state') %}
-        
-        {% if grid_power > 0 and charging_state != 'CHARGING' %}
-          {# Positive grid = import for house #}
-          {{ grid_power | round(0) }}
-        {% else %}
-          0
-        {% endif %}
+        {% set imported = [states('sensor.reading_energy_main_meter') | float(0), 0] | max %}
+        {% set grid_charge = states('sensor.grid_to_battery') | float(0) %}
+        {% set wallbox = states('sensor.wattpilot_charging_power') | float(0) %}
+        {% set house = states('sensor.house_consumption') | float(0) %}
+        {{ [[imported - grid_charge - wallbox, 0] | max, house] | min | round(0) }}
 
     - name: "Grid To Battery"
       unique_id: grid_to_battery_flow
@@ -1157,16 +1144,18 @@
       unit_of_measurement: W
       device_class: power
       state_class: measurement
+      availability: >
+        {{ is_number(states('sensor.reading_energy_main_meter'))
+           and is_number(states('sensor.reading_energy_inverter_ac_output'))
+           and is_number(states('sensor.battery_charge_power'))
+           and is_state('binary_sensor.inverter_data_valid', 'on') }}
       state: >
-        {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
-        {% set charging_state = states('sensor.charging_state') %}
-        
-        {% if grid_power > 0 and charging_state == 'CHARGING' %}
-          {# Grid charging battery #}
-          {{ grid_power | round(0) }}
-        {% else %}
-          0
-        {% endif %}
+        {% set grid_import = [states('sensor.reading_energy_main_meter') | float(0), 0] | max %}
+        {% set inverter_import = [-(states('sensor.reading_energy_inverter_ac_output') | float(0)), 0] | max %}
+        {% set charge = [states('sensor.battery_charge_power') | float(0), 0] | max %}
+        {# Only AC imported by the hybrid inverter can be grid charging. #}
+        {# Bound by both meter import and battery charge; exclude EV/house load. #}
+        {{ [grid_import, inverter_import, charge] | min | round(0) }}
 
     - name: "Wallbox Power"
       unique_id: wallbox_power_consumption
@@ -1468,11 +1457,15 @@
           {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
           {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
           {% set use_source = source_state not in ['unknown', 'unavailable', 'none', 'None'] and source_prices | length > 0 and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
-          {% if use_source %}
-            {{ source_today }}
-          {% else %}
-            {{ this.attributes.get('today', []) if this is defined else [] }}
-          {% endif %}
+          {% set selected = source_prices if use_source else cached_prices %}
+          {% set day = (now() + timedelta(days=0)).date() %}
+          {% set ns = namespace(prices=[]) %}
+          {% for price in selected %}
+            {% if (as_datetime(price.startsAt) | as_local).date() == day %}
+              {% set ns.prices = ns.prices + [price] %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.prices }}
         tomorrow: >
           {% set source_state = states('sensor.tibber_energy_prices') %}
           {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
@@ -1485,11 +1478,15 @@
           {% set cached_valid_until = as_datetime(cached_prices[-1].startsAt) + timedelta(minutes=15) if cached_prices | length > 0 else none %}
           {% set cached_hours = ((cached_valid_until - now()).total_seconds() / 3600) if cached_valid_until else 0 %}
           {% set use_source = source_state not in ['unknown', 'unavailable', 'none', 'None'] and source_prices | length > 0 and (cached_prices | length == 0 or cached_hours <= 3 or (source_valid_until and cached_valid_until and source_valid_until > cached_valid_until)) %}
-          {% if use_source %}
-            {{ source_tomorrow }}
-          {% else %}
-            {{ this.attributes.get('tomorrow', []) if this is defined else [] }}
-          {% endif %}
+          {% set selected = source_prices if use_source else cached_prices %}
+          {% set day = (now() + timedelta(days=1)).date() %}
+          {% set ns = namespace(prices=[]) %}
+          {% for price in selected %}
+            {% if (as_datetime(price.startsAt) | as_local).date() == day %}
+              {% set ns.prices = ns.prices + [price] %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.prices }}
         last_successful_update: >
           {% set source_state = states('sensor.tibber_energy_prices') %}
           {% set source_today = state_attr('sensor.tibber_energy_prices', 'today') or [] %}
@@ -1928,6 +1925,10 @@
       unique_id: car_boost_viable
       icon: mdi:car-turbocharger
       state: >
+        {% set grid_safe = is_state('binary_sensor.grid_control_ready', 'on') or (is_state('sensor.grid_connection_status', 'island') and is_state('binary_sensor.grid_available', 'off')) %}
+        {% if not grid_safe %}
+          {{ false }}
+        {% else %}
         {% set master = is_state('input_boolean.car_smart_charging_on', 'on') %}
         {% set plugged = is_state('binary_sensor.wattpilot_33175380_stecker', 'on') %}
         {% set eco_mode = is_state('select.wattpilot_charging_mode', 'Eco') %}
@@ -1961,12 +1962,13 @@
         {% if boost_running %}
           {# Keep viable while running until the budget is truly gone — the #}
           {# min_budget threshold only gates STARTING a boost (hysteresis). #}
-          {{ master and plugged and eco_mode and data_valid and not battery_busy
+          {{ grid_safe and master and plugged and eco_mode and data_valid and not battery_busy
              and soc > floor_soc and budget > 0 }}
         {% else %}
-          {{ master and plugged and eco_mode and not suppressed and data_valid
+          {{ grid_safe and master and plugged and eco_mode and not suppressed and data_valid
              and not battery_busy and soc >= (floor_soc + 3) and budget >= min_budget
              and in_start_window and car_can_charge }}
+        {% endif %}
         {% endif %}
 
     - name: "Car Cheap Grid Window"
@@ -1979,7 +1981,7 @@
         {# Island guard: "grid charges the car" needs a grid — in Inselbetrieb the #}
         {# Default mode would drain the battery or overload-trip the inverter. #}
         {# Cached prices stay valid during an outage, so this must be explicit. #}
-        {% set grid_ok = not is_state('binary_sensor.grid_available', 'off') %}
+        {% set grid_ok = is_state('binary_sensor.grid_control_ready', 'on') %}
         {% set price_ct = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
         {% set percentile = states('sensor.tibber_energy_price_percentile_next_12_hours') | float(default=100) %}
         {% set start_pct = states('input_number.car_cheap_grid_percentile') | float(default=10) %}
@@ -1999,15 +2001,15 @@
         {% endif %}
 
 # ============================================================================
-# Battery Charge Cycle Tracker — outcome measurement ("is this saving money?")
-# Samples energy charged every 15 min while a charge cycle runs and prices it
-# at the live tariff; in parallel it prices the same energy at today's average
-# ("what buying it whenever would have cost"). The difference is the saving.
-# All state lives in the `data` attribute (single JSON blob so the whole
-# accumulation logic exists exactly once); monthly totals reset on rollover.
-# Feeds the dashboard savings tile and the charge_cycle_summary log line.
+# AC grid-charge estimate. Integrate previous power and tariff, not a delayed
+# total-battery-energy counter. The v2 baseline excludes legacy mixed-source
+# totals and keeps them in legacy_totals for audit. This is a gross tariff
+# comparison, not realized net savings after losses/wear/export opportunity.
 # ============================================================================
 - trigger:
+    - platform: homeassistant
+      event: start
+      id: boot
     - platform: state
       entity_id: input_boolean.battery_charging_active
       to: "on"
@@ -2017,93 +2019,109 @@
       from: "on"
       to: "off"
       id: stop
+    - platform: state
+      entity_id:
+        - sensor.grid_to_battery
+        - sensor.tibber_cached_energy_prices
+      id: sample
     - platform: time_pattern
-      minutes: "/15"
+      seconds: "/10"
       id: tick
   sensor:
     - name: "Battery Charge Cycle Tracker"
       unique_id: battery_charge_cycle_tracker
       unit_of_measurement: "EUR"
-      icon: mdi:piggy-bank-outline
+      icon: mdi:chart-line
       state: >
-        {# Month saved so far. Reads the previous data blob — lags one update, #}
-        {# catches up on the next 15-min tick. #}
         {% set d = this.attributes.get('data', {}) if this is defined else {} %}
-        {% if d is not mapping %}{% set d = {} %}{% endif %}
-        {{ ((d.get('month_counterfactual_eur', 0) | float(0)) - (d.get('month_cost_eur', 0) | float(0))) | round(2) }}
+        {{ (d.get('month_saved_eur', 0) if d is mapping and d.get('accounting_version') == 2 else 0) | round(2) }}
       attributes:
         data: >
           {% set d = this.attributes.get('data', {}) if this is defined else {} %}
           {% if d is not mapping %}{% set d = {} %}{% endif %}
-          {% set energy = states('sensor.battery_charge_energy') | float(default=-1) %}
-          {% set price = states('sensor.tibber_cached_energy_prices') | float(default=-999) %}
-          {% set today = state_attr('sensor.tibber_cached_energy_prices', 'today') or [] %}
-          {% set day_avg = ((today | map(attribute='total') | sum) / (today | length)) if today | length > 0 else price %}
-          {% set month_key = now().strftime('%Y-%m') %}
-          {# Month rollover: reset totals when the stored month differs #}
-          {% set same_month = d.get('month', '') == month_key %}
+          {% set v2 = d.get('accounting_version') == 2 %}
+          {% set legacy = d.get('legacy_totals', {}) if v2 else dict(month=d.get('month'), kwh=d.get('month_kwh', 0), cost_eur=d.get('month_cost_eur', 0), comparison_eur=d.get('month_counterfactual_eur', 0), price_advantage_eur=d.get('month_saved_eur', 0)) %}
+          {% set stamp = as_timestamp(now()) %}
+          {% set month = now().strftime('%Y-%m') %}
+          {% set same_month = v2 and d.get('month') == month %}
           {% set m_kwh = d.get('month_kwh', 0) | float(0) if same_month else 0 %}
           {% set m_cost = d.get('month_cost_eur', 0) | float(0) if same_month else 0 %}
           {% set m_cf = d.get('month_counterfactual_eur', 0) | float(0) if same_month else 0 %}
           {% set m_cycles = d.get('month_cycles', 0) | int(0) if same_month else 0 %}
-          {% set active = d.get('cycle_active', false) %}
-          {% set c_kwh = d.get('cycle_kwh', 0) | float(0) %}
-          {% set c_cost = d.get('cycle_cost_eur', 0) | float(0) %}
-          {% set c_cf = d.get('cycle_counterfactual_eur', 0) | float(0) %}
-          {% set last_energy = d.get('cycle_last_energy_kwh', -1) | float(-1) %}
-          {% set last_cycle = d.get('last_cycle', {}) %}
+          {% set active = v2 and d.get('cycle_active', false) %}
+          {% set c_kwh = d.get('cycle_kwh', 0) | float(0) if active else 0 %}
+          {% set c_cost = d.get('cycle_cost_eur', 0) | float(0) if active else 0 %}
+          {% set c_cf = d.get('cycle_counterfactual_eur', 0) | float(0) if active else 0 %}
+          {% set started = d.get('cycle_start', 'unknown') if active else 'unknown' %}
+          {% set last_cycle = d.get('last_cycle', {}) if v2 else {} %}
+          {% set missed = d.get('unmeasured_seconds', 0) | float(0) if v2 else 0 %}
           {% set trig = trigger.id | default('none') %}
-
-          {% if trig == 'start' %}
-            {% set active = true %}
-            {% set c_kwh = 0 %}{% set c_cost = 0 %}{% set c_cf = 0 %}
-            {% set last_energy = energy %}
-            {% set cycle_start = now().isoformat() %}
-          {% else %}
-            {% set cycle_start = d.get('cycle_start', 'unknown') %}
-          {% endif %}
-
-          {% if trig in ['tick', 'stop'] and active %}
-            {# Accumulate since last sample; guard against unavailable readings #}
-            {% if energy >= 0 and last_energy >= 0 and price > -999 %}
-              {% set delta = [energy - last_energy, 0] | max %}
-              {% set c_kwh = c_kwh + delta %}
-              {% set c_cost = c_cost + (delta * price) %}
-              {% set c_cf = c_cf + (delta * day_avg) %}
+          {% set since = d.get('sample_ts', stamp) | float(stamp) if v2 else stamp %}
+          {% set elapsed = [stamp - since, 0] | max %}
+          {% set prices = (state_attr('sensor.tibber_cached_energy_prices', 'today') or []) + (state_attr('sensor.tibber_cached_energy_prices', 'tomorrow') or []) %}
+          {% set tariff = namespace(price=none, until=0, total=0, count=0) %}
+          {% for p in prices %}
+            {% set ps = as_timestamp(p.startsAt, default=0) %}
+            {% if ps <= stamp and stamp < ps + 900 %}
+              {% set tariff.price = p.total | float %}
+              {% set tariff.until = ps + 900 %}
             {% endif %}
-            {% if energy >= 0 %}{% set last_energy = energy %}{% endif %}
+            {% if (as_datetime(p.startsAt) | as_local).date() == now().date() %}
+              {% set tariff.total = tariff.total + p.total | float %}
+              {% set tariff.count = tariff.count + 1 %}
+            {% endif %}
+          {% endfor %}
+          {% set day_avg = tariff.total / tariff.count if tariff.count > 0 else none %}
+          {% set increment = namespace(kwh=0, cost=0, cf=0, month_kwh=0, month_cost=0, month_cf=0, covered=0) %}
+          {% if active and trig != 'boot' and 0 < elapsed <= 120 and d.get('sample_valid', false) %}
+            {# Split at the tariff boundary. The previous slot/average survives
+               midnight even after cache attributes rotate to the new day. #}
+            {% set boundary = d.get('sample_until', since) | float(since) %}
+            {% set first = [[boundary, stamp] | min - since, 0] | max %}
+            {% set tail = elapsed - first %}
+            {% set watts = d.get('sample_w', 0) | float(0) %}
+            {% set kwh = watts * first / 3600000 %}
+            {% set cost = kwh * d.get('sample_price', 0) | float(0) %}
+            {% set cf = kwh * d.get('sample_day_avg', 0) | float(0) %}
+            {% set increment.kwh = kwh %}{% set increment.cost = cost %}{% set increment.cf = cf %}
+            {% set increment.covered = first %}
+            {% if same_month %}
+              {% set increment.month_kwh = kwh %}{% set increment.month_cost = cost %}{% set increment.month_cf = cf %}
+            {% endif %}
+            {% if tail > 0 and tariff.price is not none and day_avg is not none %}
+              {% set kwh = watts * tail / 3600000 %}
+              {% set increment.kwh = increment.kwh + kwh %}
+              {% set increment.cost = increment.cost + kwh * tariff.price %}
+              {% set increment.cf = increment.cf + kwh * day_avg %}
+              {% set increment.covered = elapsed %}
+              {% set increment.month_kwh = increment.month_kwh + kwh %}
+              {% set increment.month_cost = increment.month_cost + kwh * tariff.price %}
+              {% set increment.month_cf = increment.month_cf + kwh * day_avg %}
+            {% endif %}
           {% endif %}
-
+          {% if active %}
+            {% set c_kwh = c_kwh + increment.kwh %}
+            {% set c_cost = c_cost + increment.cost %}
+            {% set c_cf = c_cf + increment.cf %}
+            {% set missed = missed + elapsed - increment.covered %}
+          {% endif %}
+          {% set m_kwh = m_kwh + increment.month_kwh %}
+          {% set m_cost = m_cost + increment.month_cost %}
+          {% set m_cf = m_cf + increment.month_cf %}
           {% if trig == 'stop' and active %}
-            {% set active = false %}
-            {% set m_kwh = m_kwh + c_kwh %}
-            {% set m_cost = m_cost + c_cost %}
-            {% set m_cf = m_cf + c_cf %}
+            {% set last_cycle = dict(started=started, ended=now().isoformat(), kwh=c_kwh | round(4), cost_eur=c_cost | round(4), counterfactual_eur=c_cf | round(4), saved_eur=(c_cf - c_cost) | round(4), avg_price_ct=((c_cost / c_kwh * 100) if c_kwh > 0 else 0) | round(2), day_avg_ct=((c_cf / c_kwh * 100) if c_kwh > 0 else 0) | round(2), accounting_version=2) %}
             {% set m_cycles = m_cycles + 1 %}
-            {% set last_cycle = dict(
-                 started = cycle_start,
-                 ended = now().isoformat(),
-                 kwh = c_kwh | round(2),
-                 cost_eur = c_cost | round(3),
-                 counterfactual_eur = c_cf | round(3),
-                 saved_eur = (c_cf - c_cost) | round(3),
-                 avg_price_ct = ((c_cost / c_kwh * 100) if c_kwh > 0 else 0) | round(2),
-                 day_avg_ct = (day_avg * 100) | round(2)
-               ) %}
+            {% set active = false %}
+          {% elif trig == 'boot' %}
+            {# Never extrapolate a stored power reading across downtime. #}
+            {% set active = false %}
+          {% elif trig == 'start' and not active %}
+            {% set active = true %}
+            {% set started = now().isoformat() %}
+            {% set c_kwh = 0 %}{% set c_cost = 0 %}{% set c_cf = 0 %}
           {% endif %}
-
-          {{ dict(
-               month = month_key,
-               month_kwh = m_kwh | round(2),
-               month_cost_eur = m_cost | round(3),
-               month_counterfactual_eur = m_cf | round(3),
-               month_saved_eur = (m_cf - m_cost) | round(3),
-               month_cycles = m_cycles,
-               cycle_active = active,
-               cycle_start = cycle_start,
-               cycle_kwh = c_kwh | round(2),
-               cycle_cost_eur = c_cost | round(3),
-               cycle_counterfactual_eur = c_cf | round(3),
-               cycle_last_energy_kwh = last_energy,
-               last_cycle = last_cycle
-             ) }}
+          {% set valid = is_number(states('sensor.grid_to_battery')) and tariff.price is not none and day_avg is not none %}
+          {{ dict(accounting_version=2, measured_since=d.get('measured_since', now().isoformat()) if v2 else now().isoformat(), legacy_totals=legacy, month=month,
+               month_kwh=m_kwh | round(8), month_cost_eur=m_cost | round(8), month_counterfactual_eur=m_cf | round(8), month_saved_eur=(m_cf - m_cost) | round(8), month_cycles=m_cycles,
+               cycle_active=active, cycle_start=started, cycle_kwh=c_kwh | round(8), cycle_cost_eur=c_cost | round(8), cycle_counterfactual_eur=c_cf | round(8), last_cycle=last_cycle,
+               sample_ts=stamp, sample_w=states('sensor.grid_to_battery') | float(0), sample_valid=valid, sample_price=tariff.price, sample_until=tariff.until, sample_day_avg=day_avg, unmeasured_seconds=missed | round(1)) }}

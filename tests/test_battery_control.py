@@ -45,6 +45,8 @@ class Rig:
             'input_boolean.battery_automation_on': 'on',
             'binary_sensor.inverter_data_valid': 'on',
             'binary_sensor.grid_available': 'on',
+            'binary_sensor.grid_control_ready': 'on',
+            'sensor.grid_connection_status': 'grid',
             'binary_sensor.tibber_cached_price_data_valid': 'on',
             'binary_sensor.car_charging_stable': 'on' if car else 'off',
             'binary_sensor.should_charge_battery_during_car_charging': 'on',
@@ -170,6 +172,8 @@ class BatteryControlTests(unittest.TestCase):
         for sensor in ('binary_sensor.inverter_data_valid', 'binary_sensor.grid_available'):
             rig = Rig(manual=True)
             rig.states[sensor] = 'off'
+            if sensor == 'binary_sensor.grid_available':
+                rig.states['binary_sensor.grid_control_ready'] = 'off'
             rig.coordinate()
             self.assertEqual(rig.states('switch.storctl_mod'), 'off')
             self.assertEqual(rig.states('input_boolean.manual_battery_charge'), 'off')
@@ -196,6 +200,103 @@ class BatteryControlTests(unittest.TestCase):
                     rig = Rig()
                     rig.registers = dict(zip((40365, 40366), initial))
                     rig.run(SCRIPTS[script]['sequence'])
+
+
+class GridUncertaintyTests(unittest.TestCase):
+    def classify(self, frequency, meter, inverter='on'):
+        rig = Rig()
+        rig.states.update({'sensor.grid_frequency': frequency,
+                           'sensor.reading_energy_main_meter': meter,
+                           'binary_sensor.inverter_data_valid': inverter})
+        def is_number(value):
+            import math
+            try:
+                return math.isfinite(float(value))
+            except (ValueError, TypeError):
+                return False
+        rig.env.globals['is_number'] = is_number
+        return rig.render(SENSORS['Grid Connection Status']['state'])
+
+    def test_signal_combinations(self):
+        for freq, meter, inverter, expected in [
+            ('50', '0', 'on', 'grid'), ('49.96', '-500', 'on', 'grid'),
+            ('49.96', 'unavailable', 'on', 'uncertain'),
+            ('unavailable', 'unavailable', 'on', 'uncertain'),
+            ('unavailable', '0', 'on', 'uncertain'),
+            ('0', '10', 'on', 'uncertain'), ('70', '10', 'on', 'uncertain'),
+            ('50', 'nan', 'on', 'uncertain'), ('50', '10', 'off', 'uncertain'),
+            ('53', 'unavailable', 'on', 'island'), ('53', '0', 'on', 'island')]:
+            with self.subTest(freq=freq, meter=meter, inverter=inverter):
+                self.assertEqual(self.classify(freq, meter, inverter), expected)
+
+    def test_uncertainty_is_unavailable_not_a_reported_outage(self):
+        rig = Rig()
+        rig.states['sensor.grid_connection_status'] = 'uncertain'
+        self.assertFalse(rig.truth(rig.render(SENSORS['Grid Available']['availability'])))
+        self.assertFalse(rig.truth(rig.render(SENSORS['Grid Control Ready']['state'])))
+        self.assertEqual(SENSORS['Grid Control Ready']['delay_on'], {'minutes': 5})
+        self.assertNotIn('delay_off', SENSORS['Grid Control Ready'])
+
+    def test_uncertainty_releases_charging_car_limit_and_reserve_hold(self):
+        for active, car, manual in [(True, False, True), (False, True, False), (False, False, False)]:
+            with self.subTest(active=active, car=car):
+                rig = Rig(active=active, car=car, manual=manual)
+                rig.states['binary_sensor.grid_control_ready'] = 'off'
+                rig.states['sensor.grid_connection_status'] = 'uncertain'
+                rig.states['binary_sensor.should_prevent_discharge'] = 'on'
+                rig.states['input_boolean.battery_no_discharging_active'] = 'on'
+                rig.coordinate()
+                self.assertEqual(rig.registers, {40365: 10000, 40366: 10000})
+                self.assertEqual(rig.states('switch.storctl_mod'), 'off')
+                self.assertEqual(rig.states('input_boolean.battery_charging_active'), 'off')
+                self.assertEqual(rig.states('input_boolean.battery_no_discharging_active'), 'off')
+                self.assertEqual(rig.states('sensor.battery_control_mode'), 'normal')
+
+    def test_direct_charge_cannot_bypass_interlock(self):
+        rig = Rig(manual=True)
+        rig.states['binary_sensor.grid_control_ready'] = 'unavailable'
+        rig.run(SCRIPTS['charge_battery_to_target']['sequence'])
+        self.assertEqual(rig.calls, [])
+
+    def test_stale_discharge_watchdog_cannot_reapply_a_limit(self):
+        rig = Rig(car=True)
+        rig.states['binary_sensor.grid_control_ready'] = 'off'
+        rig.run(SCRIPTS['set_dynamic_discharge_limit']['sequence'])
+        self.assertEqual(rig.calls, [])
+
+    def test_negative_prices_do_not_override_grid_uncertainty(self):
+        rig = Rig()
+        rig.states.update({'input_boolean.car_smart_charging_on': 'on',
+                           'binary_sensor.wattpilot_33175380_stecker': 'on',
+                           'sensor.tibber_cached_energy_prices': '-0.10',
+                           'binary_sensor.grid_control_ready': 'off'})
+        self.assertFalse(rig.truth(rig.render(SENSORS['Car Cheap Grid Window']['state'])))
+
+    def test_boost_stops_on_uncertainty_even_if_other_templates_unavailable(self):
+        rig = Rig()
+        rig.states['binary_sensor.grid_control_ready'] = 'off'
+        rig.states['sensor.grid_connection_status'] = 'uncertain'
+        # Simulate the old grid binary sensor lagging behind the raw evidence.
+        rig.states['binary_sensor.grid_available'] = 'off'
+        self.assertFalse(rig.truth(rig.render(SENSORS['Car Boost Viable']['state'])))
+
+    def test_wallbox_interlock_includes_uncertainty_and_reconnect(self):
+        automation = next(a for a in AUTOMATIONS if a['alias'] == 'Grid Outage Wallbox Watchdog')
+        rig = Rig(car=True)
+        rig.states['binary_sensor.grid_control_ready'] = 'off'
+        self.assertTrue(rig.condition(automation['condition']))
+        self.assertIn('binary_sensor.grid_control_ready', automation['trigger'][0]['entity_id'])
+        rig.states['select.wattpilot_charging_mode'] = 'unavailable'
+        self.assertFalse(rig.condition(automation['condition']))
+        self.assertFalse(any(s.get('service', '').startswith('notify.mobile_app') for s in automation['action']))
+
+    def test_outage_notifications_require_persisted_confirmed_outage(self):
+        guard = next(a for a in AUTOMATIONS if a['alias'] == 'Grid Outage Guard')
+        recovery = guard['trigger'][1]
+        self.assertNotIn('from', recovery)  # off -> unavailable -> on also recovers
+        branches = guard['action'][0]['choose']
+        self.assertIn({'condition': 'state', 'entity_id': 'input_boolean.grid_outage_active', 'state': 'off'}, branches[0]['conditions'])
+        self.assertIn({'condition': 'state', 'entity_id': 'input_boolean.grid_outage_active', 'state': 'on'}, branches[1]['conditions'])
 
 
 if __name__ == '__main__':
