@@ -76,26 +76,15 @@ The system now includes a comprehensive Lovelace dashboard (`ui-lovelace.yaml`) 
 - Current and forecasted energy prices
 - Visual gauge for battery level
 
-### Energy Flow (NEW!)
-- **Interactive Sankey chart** showing real-time energy flows
-- **Built-in debugging tools** to diagnose display issues
-  - Auto-appearing error panel when entities are unavailable
-  - Entity status monitoring (10 critical sensors)
-  - Detailed diagnostics with fix recommendations
-- Visual representation of power distribution between:
-  - Solar panels (Fronius + Balkonkraftwerk)
-  - Battery storage
-  - House consumption
-  - Wallbox (EV charging)
-  - Grid (import/export)
-- Real-time power status with gauges
-- Historical energy flow graphs
-- Detailed flow tracking for all energy paths
+### Energy Flow
+- Custom **Energy in motion** card on Overview and the dedicated Energy Flow view
+- Animated connections show solar, grid import/export, battery charge/discharge, house and car charger
+- Separate household and EV consumption, battery SoC, and Fronius/balcony generation
+- Responsive layout, theme colors, keyboard-accessible sensor details, and reduced-motion support
+- Missing upstream telemetry displays as unavailable rather than an apparently valid zero
+- Two-hour power history and the existing detailed allocation sensors remain below the diagram
 
-**Documentation:**
-- [ENERGY_FLOW_SETUP.md](ENERGY_FLOW_SETUP.md) - Complete setup guide
-- [SANKEY_INSTALLATION.md](SANKEY_INSTALLATION.md) - Installation instructions
-- [SANKEY_DEBUG_GUIDE.md](SANKEY_DEBUG_GUIDE.md) - **Debugging guide for troubleshooting** ⭐
+See [ENERGY_FLOW_DESIGN.md](ENERGY_FLOW_DESIGN.md) for installation, verification and rollback. The older Sankey setup/debug guides describe the previous visualization.
 
 ### Charging Logic
 - Charging decision indicators (should start/stop charging)

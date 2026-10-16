@@ -14,6 +14,8 @@ frontend:
 lovelace:
   resource_mode: yaml
   resources:
+    - url: /local/energy-flow-card.js?v=20261016-1
+      type: module
     - url: /hacsfiles/ha-sankey-chart/ha-sankey-chart.js
       type: module
     - url: /hacsfiles/power-flow-card-plus/power-flow-card-plus.js

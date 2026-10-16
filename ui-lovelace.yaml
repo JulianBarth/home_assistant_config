@@ -14,43 +14,8 @@ views:
     path: overview
     icon: mdi:view-dashboard
     cards:
-      # --- POWER FLOW VISUALIZATION (animated) ---
-      - type: custom:power-flow-card-plus
-        entities:
-          battery:
-            entity: sensor.battery_power
-            state_of_charge: sensor.batterie_soc
-            icon: mdi:battery
-            display_state: one_way
-            color:
-              icon_color: var(--state-icon-color)
-            state_of_charge_unit_white_space: false
-          grid:
-            entity: sensor.grid_power
-            icon: mdi:transmission-tower
-            display_state: one_way
-            color_icon: true
-          solar:
-            entity: sensor.total_solar_power
-            icon: mdi:solar-power
-            display_state: one_way
-            color_icon: true
-            color:
-              icon_color: var(--warning-color)
-          home:
-            entity: sensor.house_consumption
-            icon: mdi:home
-            override_state: true
-        clickable_entities: true
-        display_zero_lines:
-          mode: show
-          transparency: 50
-        use_new_flow_rate_model: true
-        w_decimals: 0
-        min_flow_rate: 0.75
-        max_flow_rate: 6
-        watt_threshold: 0
-        kw_decimals: 1
+      # --- LIVE ENERGY FLOW ---
+      - type: custom:energy-flow-card
 
       # --- BATTERY + ALGORITHM STATUS ---
       - type: vertical-stack
@@ -284,112 +249,64 @@ views:
             name: Smart Target
 
   # =========================================================================
-  # VIEW 2: ENERGY FLOW — Real-time visualization + Sankey
+  # VIEW 2: ENERGY FLOW — Live power, storage and consumption
   # =========================================================================
   - title: Energy Flow
     path: energy_flow
-    icon: mdi:chart-sankey
+    icon: mdi:transmission-tower
+    type: panel
     cards:
-      # --- SANKEY CHART ---
-      - type: custom:sankey-chart
-        title: "🔋 Energy Flow"
-        height: 600
-        wide: true
-        show_names: true
-        show_values: true
-        show_units: true
-        sections:
-          - entities:
-              - entity_id: sensor.total_solar_power
-                name: Solar Production
-                color: '#FFB300'
-                children:
-                  - sensor.solar_to_house
-                  - sensor.solar_to_battery
-                  - sensor.solar_to_grid
-              - entity_id: sensor.sankey_grid_import
+      # Wide canvas keeps the flow diagram and history together.
+      - type: vertical-stack
+        cards:
+          - type: custom:energy-flow-card
+
+          # --- POWER FLOW HISTORY ---
+          - type: history-graph
+            title: "Energy Flow History (2h)"
+            hours_to_show: 2
+            refresh_interval: 30
+            entities:
+              - entity: sensor.total_solar_power
+                name: Solar
+              - entity: sensor.grid_power
                 name: Grid
-                color: '#2196F3'
-                children:
-                  - sensor.grid_to_house
-                  - sensor.grid_to_battery
-              - entity_id: sensor.sankey_battery_discharge
+              - entity: sensor.battery_power
                 name: Battery
-                color: '#4CAF50'
-                children:
-                  - sensor.battery_to_house
-          - entities:
-              - entity_id: sensor.solar_to_house
-                name: "Solar → House"
-                children:
-                  - sensor.house_consumption
-              - entity_id: sensor.solar_to_battery
-                name: "Solar → Battery"
-              - entity_id: sensor.solar_to_grid
-                name: "Solar → Grid"
-              - entity_id: sensor.grid_to_house
-                name: "Grid → House"
-                children:
-                  - sensor.house_consumption
-              - entity_id: sensor.grid_to_battery
-                name: "Grid → Battery"
-              - entity_id: sensor.battery_to_house
-                name: "Battery → House"
-                children:
-                  - sensor.house_consumption
-          - entities:
-              - entity_id: sensor.house_consumption
+              - entity: sensor.house_consumption
                 name: House
-                color: '#FF5722'
-        min_box_height: 3
-        min_box_distance: 5
+              - entity: sensor.wallbox_power
+                name: Wallbox
 
-      # --- POWER FLOW HISTORY ---
-      - type: history-graph
-        title: "Energy Flow History (2h)"
-        hours_to_show: 2
-        refresh_interval: 30
-        entities:
-          - entity: sensor.total_solar_power
-            name: Solar
-          - entity: sensor.grid_power
-            name: Grid
-          - entity: sensor.battery_power
-            name: Battery
-          - entity: sensor.house_consumption
-            name: House
-          - entity: sensor.wallbox_power
-            name: Wallbox
-
-      # --- FLOW DETAIL ---
-      - type: entities
-        title: "🔄 Flow Details"
-        show_header_toggle: false
-        state_color: true
-        entities:
-          - type: section
-            label: Solar Flows
-          - entity: sensor.solar_to_house
-            name: "Solar → House"
-            icon: mdi:arrow-right
-          - entity: sensor.solar_to_battery
-            name: "Solar → Battery"
-            icon: mdi:arrow-right
-          - entity: sensor.solar_to_grid
-            name: "Solar → Grid"
-            icon: mdi:arrow-right
-          - type: divider
-          - type: section
-            label: Grid & Battery Flows
-          - entity: sensor.grid_to_house
-            name: "Grid → House"
-            icon: mdi:arrow-right
-          - entity: sensor.grid_to_battery
-            name: "Grid → Battery"
-            icon: mdi:arrow-right
-          - entity: sensor.battery_to_house
-            name: "Battery → House"
-            icon: mdi:arrow-right
+          # --- FLOW DETAIL ---
+          - type: entities
+            title: "🔄 Flow Details"
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - type: section
+                label: Solar Flows
+              - entity: sensor.solar_to_house
+                name: "Solar → House"
+                icon: mdi:arrow-right
+              - entity: sensor.solar_to_battery
+                name: "Solar → Battery"
+                icon: mdi:arrow-right
+              - entity: sensor.solar_to_grid
+                name: "Solar → Grid"
+                icon: mdi:arrow-right
+              - type: divider
+              - type: section
+                label: Grid & Battery Flows
+              - entity: sensor.grid_to_house
+                name: "Grid → House"
+                icon: mdi:arrow-right
+              - entity: sensor.grid_to_battery
+                name: "Grid → Battery"
+                icon: mdi:arrow-right
+              - entity: sensor.battery_to_house
+                name: "Battery → House"
+                icon: mdi:arrow-right
 
   # =========================================================================
   # VIEW 3: SOLAR — Production details

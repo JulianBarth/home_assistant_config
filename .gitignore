@@ -30,3 +30,9 @@ evcc.yaml
 # Local diagnostics contain private logs and installation snapshots.
 diagnostics/
 *.tar.gz
+
+# Energy-flow visualization and reproducible preview
+!www/energy-flow-card.js
+!tests/test_energy_flow.cjs
+!previews/
+!previews/energy-flow.html
