@@ -18,10 +18,29 @@ Dashboard tests check templates, availability and energy-flow scenarios.
 
 `test_control_edge_cases.py` adds control transitions, reserve recovery, raw SOC
 loss with a stale validity flag, invalid SOC/target ranges, and discharge
-fallback power balances including balcony generation. The defects documented in
-[`BUG_REVIEW.md`](../BUG_REVIEW.md) are corrected and all 57 Python tests pass
-without expected-failure markers. The JavaScript scenarios also pass.
+fallback power balances including balcony generation. The iterative review in [`BUG_REVIEW.md`](../BUG_REVIEW.md) covers corrected
+raw-SoC loss, invalid manual targets, setup cancellation and timeout boundary
+handling. All **69 controller tests** pass without expected-failure markers.
 
 The harness is deliberately smaller than Home Assistant. Passing tests do not
 replace its configuration check, observation of fresh live telemetry, or a
 physical backup-power test.
+
+Run only the new ongoing-charge scenarios:
+
+```sh
+.venv/bin/python -m unittest discover -s tests -p test_control_edge_cases.py -k RunningChargeTelemetryTests -v
+```
+
+The validity-flag recovery case bounds the original reproduction: it showed a
+raw-versus-derived telemetry gap, not a demonstrated permanent live failure.
+
+The separate Wattpilot helper tests run against an extracted installation:
+
+```sh
+python3 tools/test_wattpilot_connection.py /path/to/custom_components/wattpilot
+```
+
+All **11 connection tests** pass against the repaired helper. The source patch
+is `tools/wattpilot-connection-repair.patch`; see `WATTPILOT_REPAIR.md` for the
+installation baseline and application instructions.

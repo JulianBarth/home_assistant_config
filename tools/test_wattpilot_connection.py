@@ -29,6 +29,30 @@ class SetupTests(unittest.IsolatedAsyncioTestCase):
   cs=[Charger() for _ in range(20)]
   for c in cs: await self.connect(c)
   self.assertTrue(all(c.stopped for c in cs))
+ async def test_ready_on_final_timeout_tick_is_accepted(self):
+  c=Charger()
+  async def final_tick(_seconds):
+   c.connected=True; c.allPropsInitialized=True
+  self.ns['asyncio']=types.SimpleNamespace(sleep=final_tick,CancelledError=asyncio.CancelledError)
+  self.assertIs(await self.ns['async_ConnectCharger']('entry',{'timeout':1},c),c)
+  self.assertFalse(c.stopped)
+ async def test_incomplete_status_on_final_tick_still_disconnects(self):
+  c=Charger()
+  async def final_tick(_seconds): c.connected=True
+  self.ns['asyncio']=types.SimpleNamespace(sleep=final_tick,CancelledError=asyncio.CancelledError)
+  self.assertIs(await self.ns['async_ConnectCharger']('entry',{'timeout':1},c),False)
+  self.assertTrue(c.stopped)
+ async def test_cancelled_setup_stops_worker_and_propagates_cancellation(self):
+  c=Charger(); entered=asyncio.Event()
+  async def waiting_sleep(_seconds):
+   entered.set()
+   await asyncio.Future()
+  self.ns['asyncio']=types.SimpleNamespace(sleep=waiting_sleep,CancelledError=asyncio.CancelledError)
+  task=asyncio.create_task(self.ns['async_ConnectCharger']('entry',{'timeout':60},c))
+  await entered.wait()
+  task.cancel()
+  with self.assertRaises(asyncio.CancelledError): await task
+  self.assertTrue(c.stopped,'Cancelled setup must stop the background reconnect worker')
 class Socket:
  def __init__(self,block=False): self.calls=0; self.entered=threading.Event(); self.closed=threading.Event(); self.block=block
  def run_forever(self):

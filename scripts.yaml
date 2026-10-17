@@ -420,7 +420,11 @@ set_dynamic_discharge_limit:
   sequence:
     # A watchdog dispatched before data loss must not reapply a limit later.
     - condition: template
-      value_template: "{{ is_state('binary_sensor.grid_control_ready', 'on') }}"
+      value_template: >
+        {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=-1) %}
+        {{ is_state('binary_sensor.grid_control_ready', 'on')
+           and is_state('binary_sensor.inverter_data_valid', 'on')
+           and 0 < soc <= 10000 }}
     - service: modbus.write_register
       data:
         hub: fronius1

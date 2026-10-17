@@ -42,6 +42,12 @@
         - input_boolean.battery_automation_on
         - input_number.manual_charge_target_soc
         - input_number.battery_hold_threshold
+    # React to raw telemetry loss independently of delayed derived flags.
+    - platform: template
+      value_template: >
+        {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=-1) %}
+        {{ not (0 < soc <= 10000) }}
+      id: raw_soc_invalid
     # Fallback check every 5 minutes
     - platform: time_pattern
       minutes: "/5"
@@ -51,7 +57,14 @@
         # car-only limit or reserve hold with no charging flag set.
         - conditions:
             - condition: template
-              value_template: "{{ not is_state('binary_sensor.grid_control_ready', 'on') }}"
+              value_template: >
+                {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=-1) %}
+                {% set manual_target = states('input_number.manual_charge_target_soc') | float(default=-1) %}
+                {{ not is_state('binary_sensor.grid_control_ready', 'on')
+                   or not is_state('binary_sensor.inverter_data_valid', 'on')
+                   or not (0 < soc <= 10000)
+                   or (is_state('input_boolean.manual_battery_charge', 'on')
+                       and not (0 < manual_target <= 100)) }}
           sequence:
             - service: script.stop_battery_charging
             - service: input_boolean.turn_off

@@ -88,3 +88,12 @@ after 25 seconds and the car resumed charging at approximately 10.68 kW.
 A local verification screenshot is excluded from the public repository.
 Rollback automation copy:
 `/config/backups/wattpilot-manual-default-20261017/automations.yaml`.
+
+
+## Iterative follow-up: cancellation and deadline handling
+
+Setup cancellation now explicitly disconnects its client and propagates
+`asyncio.CancelledError`. Initialization completed on the final allowed poll is
+accepted; incomplete initialization still disconnects. All 11 connection tests
+pass, including the two new failure reproducers and an incomplete-status control
+case. The cumulative zero-context source patch includes these corrections.

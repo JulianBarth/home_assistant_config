@@ -14,11 +14,19 @@
 +        await async_DisconnectCharger(entry_or_device_id, charger)
 @@ -306,0 +308 @@
 +            await async_DisconnectCharger(entry_or_device_id, charger)
-@@ -309,0 +312 @@
+@@ -310,4 +312,7 @@
+-            return False
+-        elif not timeout > timer:
+-            _LOGGER.error("%s - async_ConnectCharger: Timeout - unknown reason: %s sec", entry_or_device_id, timeout)
+-            return False
 +            await async_DisconnectCharger(entry_or_device_id, charger)
-@@ -312,0 +316 @@
-+            await async_DisconnectCharger(entry_or_device_id, charger)
-@@ -315,0 +320 @@
++            return False
++    except asyncio.CancelledError:
++        # HA can cancel setup during a reload or shutdown, before timeout.
++        # CancelledError is not an Exception on supported Python versions.
++        await async_DisconnectCharger(entry_or_device_id, charger)
++        raise
+@@ -315,0 +321 @@
 +        await async_DisconnectCharger(entry_or_device_id, charger)
 --- a/custom_components/wattpilot/wattpilot/src/wattpilot/__init__.py
 +++ b/custom_components/wattpilot/wattpilot/src/wattpilot/__init__.py
