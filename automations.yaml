@@ -39,6 +39,7 @@
     - platform: state
       entity_id:
         - input_boolean.manual_battery_charge
+        - input_boolean.battery_automation_on
         - input_number.manual_charge_target_soc
         - input_number.battery_hold_threshold
     # Fallback check every 5 minutes
@@ -58,6 +59,25 @@
                 entity_id:
                   - input_boolean.battery_no_discharging_active
                   - input_boolean.manual_battery_charge
+        # Master-off cleanup must bypass car debounce. Manual requests remain
+        # independent of the automation switch and still use the safety gates.
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.battery_automation_on
+              state: "off"
+            - condition: state
+              entity_id: input_boolean.manual_battery_charge
+              state: "off"
+          sequence:
+            - service: script.stop_battery_charging
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.battery_no_discharging_active
+            - service: input_number.set_value
+              target:
+                entity_id: input_number.battery_target_soc
+              data:
+                value: "{{ states('input_number.soc_target_default') | float(default=15) }}"
         # Stop first: target completion and safety also override manual charging.
         - conditions:
             - condition: state

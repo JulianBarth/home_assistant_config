@@ -961,19 +961,19 @@
         {% else %}
           {# Prefer the smoothed house-load sensor (3-min moving average) to avoid #}
           {# feeding car-power fluctuations into the limit; fall back to the #}
-          {# instantaneous grid + ac_output - wallbox computation when unavailable. #}
+          {# signed grid + inverter AC + balcony AC - wallbox balance when unavailable. #}
           {% set smoothed_house_load = states('sensor.house_consumption_smoothed') | float(default=-1) %}
           {% set surplus_extra_power = states('sensor.battery_surplus_discharge_power') | float(default=0) %}
           {% if smoothed_house_load >= 0 %}
             {% set house_load = smoothed_house_load %}
           {% else %}
             {# Calculate true house load (source-independent) #}
-            {# Total load = grid_import + inverter_ac_output (all sources feeding the house) #}
-            {# House load = Total load - Wallbox #}
+            {# Use the same signed balance as House Consumption: export reduces load. #}
             {% set grid_power = states('sensor.reading_energy_main_meter') | float(default=0) %}
             {% set ac_output = states('sensor.reading_energy_inverter_ac_output') | float(default=0) %}
             {% set wallbox_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
-            {% set total_consumption = [grid_power, 0] | max + ac_output %}
+            {% set balcony = states('sensor.balkonkraftwerk_power') | float(default=0) %}
+            {% set total_consumption = grid_power + ac_output + balcony %}
             {% set house_load = [total_consumption - wallbox_power, 0] | max %}
           {% endif %}
 

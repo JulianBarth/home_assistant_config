@@ -26,6 +26,7 @@ evcc.yaml
 !tools/
 !tools/battery_log.py
 !tests/test_operational_fixes.py
+!tests/test_control_edge_cases.py
 
 # Local diagnostics contain private logs and installation snapshots.
 diagnostics/

@@ -79,6 +79,16 @@ System-managed flags are read-only. Missing readings remain unavailable; partial
 See [UI_DASHBOARD_GUIDE.md](UI_DASHBOARD_GUIDE.md) for current usage, validation, and installation. [ENERGY_FLOW_DESIGN.md](ENERGY_FLOW_DESIGN.md) documents the diagram's power conventions. The local [energy preview](previews/energy-flow.html) renders the real custom elements with illustrative scenarios.
 
 ## Getting Started
+
+### Tests and bug review
+
+The project includes offline tests for battery control, reserve recovery,
+grid interlocks, power accounting, logging and dashboard behavior. See
+[tests/README.md](tests/README.md) for setup and commands, and
+[BUG_REVIEW.md](BUG_REVIEW.md) for the latest findings from code and live-instance
+diagnostics and corrections. All regression tests run without expected-failure
+markers.
+
 For anyone wanting to expand or improve the project, start by focusing on:
 - **Energy Price Evaluations**: The system now includes price percentile analysis and average price tracking for better decision-making.
 - **Documentation**: All YAML files now include comprehensive comments for easier maintenance.

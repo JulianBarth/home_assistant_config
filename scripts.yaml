@@ -452,10 +452,12 @@ charge_battery_to_target:
   sequence:
     - condition: template
       value_template: >
+        {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=-1) %}
+        {% set target = states('input_number.battery_target_soc') | float(default=-1) %}
         {{ is_state('binary_sensor.inverter_data_valid', 'on')
            and is_state('binary_sensor.grid_control_ready', 'on')
-           and states('sensor.reading_energy_battery_soc_scaled') | float(0)
-               < states('input_number.battery_target_soc') | float(0) * 100 }}
+           and 0 < soc <= 10000 and 0 < target <= 100
+           and soc < target * 100 }}
     - choose:
         - conditions:
             - condition: template
