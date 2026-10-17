@@ -20,7 +20,7 @@ Dashboard tests check templates, availability and energy-flow scenarios.
 loss with a stale validity flag, invalid SOC/target ranges, and discharge
 fallback power balances including balcony generation. The iterative review in [`BUG_REVIEW.md`](../BUG_REVIEW.md) covers corrected
 raw-SoC loss, invalid manual targets, setup cancellation and timeout boundary
-handling. All **69 controller tests** pass without expected-failure markers.
+handling. All **72 controller tests** pass without expected-failure markers.
 
 The harness is deliberately smaller than Home Assistant. Passing tests do not
 replace its configuration check, observation of fresh live telemetry, or a
@@ -44,3 +44,6 @@ python3 tools/test_wattpilot_connection.py /path/to/custom_components/wattpilot
 All **11 connection tests** pass against the repaired helper. The source patch
 is `tools/wattpilot-connection-repair.patch`; see `WATTPILOT_REPAIR.md` for the
 installation baseline and application instructions.
+
+`DischargeCommandBoundaryTests` covers delayed watchdog execution after master-off
+and rejects invalid percentages before Modbus register conversion.

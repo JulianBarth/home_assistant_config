@@ -272,5 +272,35 @@ class DischargeFallbackTests(unittest.TestCase):
                                     balcony=200), 11.5)
 
 
+class DischargeCommandBoundaryTests(unittest.TestCase):
+    def test_delayed_watchdog_cannot_reenable_control_after_master_off(self):
+        rig = Rig(car=True)
+        rig.states['input_boolean.battery_automation_on'] = 'off'
+        rig.coordinate()
+        self.assertEqual(rig.states('switch.storctl_mod'), 'off')
+        # Model a watchdog dispatched before the coordinator's cleanup.
+        rig.run(SCRIPTS['set_dynamic_discharge_limit']['sequence'])
+        self.assertEqual(rig.registers, {40365: 10000, 40366: 10000})
+        self.assertEqual(rig.states('switch.storctl_mod'), 'off')
+
+    def test_invalid_discharge_percentage_uses_safe_fallback(self):
+        for value in ('-80', '0', '101', '1000', 'nan', 'inf', '-inf',
+                      'unavailable', 'unknown', 'garbage'):
+            with self.subTest(value=value):
+                rig = Rig(car=True, active=False)
+                rig.registers = {40365: 10000, 40366: 10000}
+                rig.states['sensor.discharge_limit_percentage'] = value
+                rig.run(SCRIPTS['set_dynamic_discharge_limit']['sequence'])
+                self.assertEqual(rig.registers, {40365: 1000, 40366: 10000})
+
+    def test_valid_discharge_percentage_boundaries_are_preserved(self):
+        for value, expected in [('1', 100), ('11.5', 1150), ('100', 10000)]:
+            with self.subTest(value=value):
+                rig = Rig(car=True, active=False)
+                rig.states['sensor.discharge_limit_percentage'] = value
+                rig.run(SCRIPTS['set_dynamic_discharge_limit']['sequence'])
+                self.assertEqual(rig.registers[40365], expected)
+
+
 if __name__ == '__main__':
     unittest.main()

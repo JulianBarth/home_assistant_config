@@ -225,3 +225,28 @@ JavaScript energy-flow checks and Git whitespace check pass. Staged public files
 and reachable Git history were audited for configured secrets and credential
 patterns without printing credentials. Private diagnostics and screenshots are
 excluded from the commit.
+
+## BUG-08 — delayed discharge watchdog overrides master-off cleanup
+
+A watchdog dispatched before the automation master is disabled can execute
+following coordinator cleanup. Its execution-time guard checked grid/SoC
+validity but not the master switch, restoring a discharge restriction and
+turning StorCtl back on. A regression first failed with OutWRte=1000 instead
+of the expected regular 10000. The dynamic script now requires the current
+master state to be on before writing registers.
+
+## BUG-09 — invalid discharge percentage reaches the register writer
+
+The script accepted numeric percentages outside the sensor's 1–100% range.
+A -80% input produced OutWRte=-8000, requesting forced charging; excessive
+values escaped the register range, NaN became zero, and infinities raised a
+conversion error. These are corrupt/stale-input simulations, not evidence that
+the production sensor emitted such values. The script now validates the range
+before conversion and uses its existing 10% fallback for invalid inputs.
+Regression cases cover missing, malformed, nonfinite and out-of-range values,
+plus valid 1%, 11.5% and 100% commands.
+
+This iteration adds three test methods. Before correction, the reproductions
+had six assertion failures and two conversion errors. After correction all
+72 Python tests and the JavaScript energy-flow scenarios pass. The offline
+harness does not reproduce Home Assistant scheduling or physical hardware.

@@ -418,12 +418,13 @@ set_dynamic_discharge_limit:
   alias: "Set Dynamic Discharge Limit"
   description: "Adjust discharge limit based on grid prices and battery SoC"
   sequence:
-    # A watchdog dispatched before data loss must not reapply a limit later.
+    # A previously dispatched watchdog must respect current master/data gates.
     - condition: template
       value_template: >
         {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=-1) %}
         {{ is_state('binary_sensor.grid_control_ready', 'on')
            and is_state('binary_sensor.inverter_data_valid', 'on')
+           and is_state('input_boolean.battery_automation_on', 'on')
            and 0 < soc <= 10000 }}
     - service: modbus.write_register
       data:
@@ -431,12 +432,9 @@ set_dynamic_discharge_limit:
         unit: 1
         address: 40365
         value: >
-          {% set raw_value = states('sensor.discharge_limit_percentage') %}
-          {% if raw_value in ['unavailable', 'unknown', 'none', 'None'] %}
-            1000
-          {% else %}
-            {{ (raw_value | float(default=10) * 100) | int }}
-          {% endif %}
+          {# Never let corrupt percentages request forced charging or overflow. #}
+          {% set percentage = states('sensor.discharge_limit_percentage') | float(default=-1) %}
+          {{ ((percentage if 1 <= percentage <= 100 else 10) * 100) | int }}
     - service: modbus.write_register
       data:
         hub: fronius1
