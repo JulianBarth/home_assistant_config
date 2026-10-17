@@ -42,3 +42,7 @@ diagnostics/
 !themes/
 !themes/energy-calm.yaml
 !tests/test_dashboard.py
+
+# Reproducible repair for the installed Wattpilot custom integration
+!tools/wattpilot-connection-repair.patch
+!tools/test_wattpilot_connection.py

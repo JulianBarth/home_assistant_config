@@ -1,0 +1,67 @@
+--- a/custom_components/wattpilot/__init__.py
++++ b/custom_components/wattpilot/__init__.py
+@@ -55,0 +56 @@
++    charger = None
+@@ -67 +68 @@
+-        async_DisconnectCharger(entry.entry_id, charger)
++        await async_DisconnectCharger(entry.entry_id, charger)
+@@ -81 +82 @@
+-        async_DisconnectCharger(entry.entry_id, charger)
++        await async_DisconnectCharger(entry.entry_id, charger)
+--- a/custom_components/wattpilot/utils.py
++++ b/custom_components/wattpilot/utils.py
+@@ -294,0 +295 @@
++        await async_DisconnectCharger(entry_or_device_id, charger)
+@@ -306,0 +308 @@
++            await async_DisconnectCharger(entry_or_device_id, charger)
+@@ -309,0 +312 @@
++            await async_DisconnectCharger(entry_or_device_id, charger)
+@@ -312,0 +316 @@
++            await async_DisconnectCharger(entry_or_device_id, charger)
+@@ -315,0 +320 @@
++        await async_DisconnectCharger(entry_or_device_id, charger)
+--- a/custom_components/wattpilot/wattpilot/src/wattpilot/__init__.py
++++ b/custom_components/wattpilot/wattpilot/src/wattpilot/__init__.py
+@@ -305,2 +305,6 @@
+-        """Start the websocket and reconnect whenever it drops."""
+-        self._stop = False
++        """Run one reconnect worker per charger, with interruptible shutdown."""
++        if self._wst.is_alive():
++            return
++        # Each worker owns its stop event. A later connect cannot revive it.
++        stop_event = threading.Event()
++        self._stop_event = stop_event
+@@ -309 +313 @@
+-            while not self._stop:
++            while not stop_event.is_set():
+@@ -311,5 +315,2 @@
+-                    try:
+-                        self._wsapp.run_forever(reconnect=RECONNECT_SECONDS)
+-                    except TypeError:
+-                        # websocket-client < 1.3.2 has no reconnect kwarg
+-                        self._wsapp.run_forever()
++                    # The outer loop is the sole owner of reconnection.
++                    self._wsapp.run_forever()
+@@ -318 +319,2 @@
+-                if self._stop:
++                self._set_disconnected()
++                if stop_event.is_set():
+@@ -320 +321,0 @@
+-                self._set_disconnected()
+@@ -322 +323,2 @@
+-                sleep(RECONNECT_SECONDS)
++                if stop_event.wait(RECONNECT_SECONDS):
++                    break
+@@ -326 +327,0 @@
+-        _LOGGER.info("connect: Wattpilot connected")
+@@ -329,2 +330,4 @@
+-        """Close the socket and stop reconnecting."""
+-        self._stop = True
++        """Stop the reconnect worker before closing the socket."""
++        stop_event = getattr(self, '_stop_event', None)
++        if stop_event is not None:
++            stop_event.set()
+@@ -336 +338,0 @@
+-        _LOGGER.info("disconnect: Wattpilot disconnected")
+@@ -451,0 +454 @@
++        self._allPropsInitialized = False

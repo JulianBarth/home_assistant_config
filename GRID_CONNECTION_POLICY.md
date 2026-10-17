@@ -6,7 +6,7 @@ four at normal frequency and twelve without a frequency reading.
 
 | Grid Connection Status | Evidence | Behavior |
 | --- | --- | --- |
-| `grid` | 49–51 Hz, numeric meter reading, valid inverter data | Allow grid-dependent controls after five continuous minutes |
+| `grid` | 49–51 Hz, numeric meter reading, valid inverter data | Manual wallbox Default allowed; automated grid-dependent controls after five continuous minutes |
 | `island` | 51.5–60 Hz, matching this GEN24 installation's tested ~53 Hz backup signature | Release battery restrictions immediately; confirm outage after one minute |
 | `uncertain` | Missing, invalid, or contradictory readings | Release battery restrictions, put wallbox in Eco, stop boost; no outage/restoration push |
 
@@ -29,8 +29,12 @@ is cancelled too. Charge-start, hold, reserve prevention and cheap-grid car
 charging all require control permission. The dynamic discharge script checks
 permission itself to reject a watchdog call queued before telemetry loss.
 
-The wallbox watchdog enforces Eco even for manual Default charging while grid
-availability is uncertain, and retries when the wallbox reconnects. It logs this
+The wallbox watchdog checks the current `sensor.grid_connection_status` directly.
+It enforces Eco even for manual Default charging during island operation or
+uncertain readings, and retries when the wallbox reconnects. Once the current
+status returns to `grid`, a manually selected Default mode is allowed immediately;
+it does not wait for the battery controller recovery timer. Battery controls and
+automated cheap-grid charging retain their five-minute delay. It logs this
 as a grid interlock, not an outage. Manual Default is not automatically restored;
 cheap-grid automation may resume once its conditions and grid permission hold.
 Eco's native solar behavior remains under Wattpilot control. Solar-backed boost

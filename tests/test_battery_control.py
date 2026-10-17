@@ -284,11 +284,31 @@ class GridUncertaintyTests(unittest.TestCase):
         automation = next(a for a in AUTOMATIONS if a['alias'] == 'Grid Outage Wallbox Watchdog')
         rig = Rig(car=True)
         rig.states['binary_sensor.grid_control_ready'] = 'off'
+        rig.states['sensor.grid_connection_status'] = 'uncertain'
         self.assertTrue(rig.condition(automation['condition']))
-        self.assertIn('binary_sensor.grid_control_ready', automation['trigger'][0]['entity_id'])
+        self.assertIn('sensor.grid_connection_status', automation['trigger'][0]['entity_id'])
         rig.states['select.wattpilot_charging_mode'] = 'unavailable'
         self.assertFalse(rig.condition(automation['condition']))
         self.assertFalse(any(s.get('service', '').startswith('notify.mobile_app') for s in automation['action']))
+
+    def test_manual_default_survives_valid_grid_during_battery_recovery(self):
+        automation = next(a for a in AUTOMATIONS if a['alias'] == 'Grid Outage Wallbox Watchdog')
+        rig = Rig(car=True)
+        rig.states['binary_sensor.grid_control_ready'] = 'off'
+        rig.states['sensor.grid_connection_status'] = 'grid'
+        self.assertFalse(rig.condition(automation['condition']))
+        # Manual wallbox permission must not open the delayed battery gate.
+        rig.run(SCRIPTS['charge_battery_to_target']['sequence'])
+        self.assertEqual(rig.calls, [])
+
+    def test_wallbox_uses_current_evidence_even_if_delayed_flag_is_stale(self):
+        automation = next(a for a in AUTOMATIONS if a['alias'] == 'Grid Outage Wallbox Watchdog')
+        for status in ['uncertain', 'island', 'unavailable', 'unknown']:
+            with self.subTest(status=status):
+                rig = Rig(car=True)
+                rig.states['binary_sensor.grid_control_ready'] = 'on'
+                rig.states['sensor.grid_connection_status'] = status
+                self.assertTrue(rig.condition(automation['condition']))
 
     def test_outage_notifications_require_persisted_confirmed_outage(self):
         guard = next(a for a in AUTOMATIONS if a['alias'] == 'Grid Outage Guard')

@@ -1332,20 +1332,22 @@
 # Wattpilot reboots in the switchover gap and reconnects minutes AFTER the
 # guard's one-shot Eco command (which then hit an unavailable entity — warning
 # only). This watchdog re-enforces Eco whenever the wallbox is reachable in a
-# non-Eco mode while grid control is unsafe (island OR uncertain): on
-# reconnect, on permission loss, on a manual mode change, and every 5 minutes.
+# non-Eco mode while current grid evidence is unsafe (island OR uncertain): on
+# reconnect, on loss of valid grid evidence, on a manual mode change, and every 5 minutes.
+# Manual Default does not wait for the battery controller recovery timer.
+# It still requires valid current grid evidence; island/uncertainty enforce Eco.
 - alias: "Grid Outage Wallbox Watchdog"
   description: "Keeps the wallbox in Eco whenever grid availability is not confirmed"
   trigger:
     - platform: state
       entity_id:
         - select.wattpilot_charging_mode
-        - binary_sensor.grid_control_ready
+        - sensor.grid_connection_status
     - platform: time_pattern
       minutes: "/5"
   condition:
     - condition: template
-      value_template: "{{ not is_state('binary_sensor.grid_control_ready', 'on') }}"
+      value_template: "{{ not is_state('sensor.grid_connection_status', 'grid') }}"
     - condition: template
       value_template: >
         {{ states('select.wattpilot_charging_mode')
