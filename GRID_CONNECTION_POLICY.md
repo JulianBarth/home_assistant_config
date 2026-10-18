@@ -16,6 +16,18 @@ provides island evidence independently of the smart meter, which loses power in
 this installation's backup mode. This is an installation-specific heuristic,
 not a universal grid-frequency detector or proof of physical transfer-switch state.
 
+Frequency source correction (18 October 2026): a sleeping GEN24 returns zero
+for its own frequency and voltage even while the house imports grid power.
+The live inverter reported SunSpec state 2 (Sleeping), 0 Hz and 0 W, while
+the Smart Meter reported 50 Hz, 229.9 V and 373 W import. `Grid Frequency`
+therefore uses the meter's frequency (unit 200, zero-based register 40095,
+float32, model 213) when inverter frequency is outside 40–70 Hz or unavailable.
+A plausible inverter reading remains authoritative, so meter fallback cannot
+mask inverter island evidence or an abnormal frequency. Both sources invalid
+still means unavailable/uncertain. The `source` attribute and grid transition
+log expose the chosen source and raw readings. Existing meter-power and
+inverter-data validity checks, island protection, and recovery delays remain.
+
 `binary_sensor.grid_available` is unavailable during uncertainty, off for a
 confirmed island and on after stable grid recovery. The separate
 `binary_sensor.grid_control_ready` revokes permission immediately and requires
@@ -58,7 +70,7 @@ frequency, island evidence, manual and car-only restrictions, negative prices,
 boost suppression and the delayed recovery configuration. They do not emulate
 Home Assistant's timer/event scheduling or test physical transfer switching.
 
-Deploy configuration.yaml, templates.yaml, scripts.yaml, automations.yaml and
+Deploy modbus.yaml, configuration.yaml, templates.yaml, scripts.yaml, automations.yaml and
 ui-lovelace.yaml together, validate the configuration in Home Assistant, and
 restart to register the new helper and templates. Allow five minutes for grid
 permission to become ready. Check a real data-loss/recovery event before relying

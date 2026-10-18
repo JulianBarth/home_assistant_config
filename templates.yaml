@@ -68,11 +68,21 @@
       state_class: measurement
       icon: mdi:sine-wave
       state: >
-        {{ states('sensor.fronius_grid_frequency') | float(default=0) | round(2) }}
+        {% set inverter = states('sensor.fronius_grid_frequency') | float(default=-1) %}
+        {% set meter = states('sensor.fronius_meter_frequency') | float(default=-1) %}
+        {# Keep plausible inverter readings authoritative, including island and
+           abnormal frequencies. Only fall back when that source is invalid
+           (notably zero during inverter sleep); never manufacture 50 Hz. #}
+        {{ (inverter if 40 <= inverter <= 70 else meter) | round(2) }}
       availability: >
-        {% set raw = states('sensor.fronius_grid_frequency') %}
-        {{ raw not in ['unavailable', 'unknown']
-           and 40 <= (raw | float(default=-1)) <= 70 }}
+        {% set inverter = states('sensor.fronius_grid_frequency') | float(default=-1) %}
+        {% set meter = states('sensor.fronius_meter_frequency') | float(default=-1) %}
+        {{ 40 <= inverter <= 70 or 40 <= meter <= 70 }}
+      attributes:
+        source: >
+          {% set inverter = states('sensor.fronius_grid_frequency') | float(default=-1) %}
+          {% set meter = states('sensor.fronius_meter_frequency') | float(default=-1) %}
+          {{ 'inverter' if 40 <= inverter <= 70 else 'meter' if 40 <= meter <= 70 else 'none' }}
 
 - sensor:
     - name: "Grid Connection Status"

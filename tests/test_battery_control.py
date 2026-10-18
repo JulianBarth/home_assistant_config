@@ -203,6 +203,63 @@ class BatteryControlTests(unittest.TestCase):
 
 
 class GridUncertaintyTests(unittest.TestCase):
+    def frequency(self, inverter, meter):
+        rig = Rig()
+        rig.states.update({'sensor.fronius_grid_frequency': inverter,
+                           'sensor.fronius_meter_frequency': meter})
+        sensor = SENSORS['Grid Frequency']
+        return (rig.render(sensor['state'])
+                if rig.truth(rig.render(sensor['availability'])) else 'unavailable')
+
+    def test_sleeping_inverter_uses_meter_frequency_and_allows_manual_default(self):
+        frequency = self.frequency('0', '50')
+        self.assertEqual(float(frequency), 50)
+        status = self.classify(frequency, '373.2')
+        self.assertEqual(status, 'grid')
+        rig = Rig(car=True)
+        rig.states.update({'sensor.grid_connection_status': status,
+                           'binary_sensor.grid_control_ready': 'off'})
+        watchdog = next(a for a in AUTOMATIONS
+                        if a['alias'] == 'Grid Outage Wallbox Watchdog')
+        self.assertFalse(rig.condition(watchdog['condition']))
+
+    def test_invalid_inverter_frequency_can_use_valid_meter(self):
+        for value in ['0', 'unavailable', 'unknown', 'garbage', 'nan', 'inf', '-1', '71']:
+            with self.subTest(value=value):
+                self.assertEqual(float(self.frequency(value, '49.98')), 49.98)
+
+    def test_meter_fallback_does_not_mask_inverter_island_or_abnormal_frequency(self):
+        for inverter, expected in [('53', 'island'), ('48', 'uncertain'),
+                                   ('51.2', 'uncertain'), ('61', 'uncertain')]:
+            with self.subTest(inverter=inverter):
+                frequency = self.frequency(inverter, '50')
+                self.assertEqual(float(frequency), float(inverter))
+                self.assertEqual(self.classify(frequency, '373.2'), expected)
+
+    def test_meter_loss_preserves_valid_inverter_island_evidence(self):
+        frequency = self.frequency('53', 'unavailable')
+        self.assertEqual(self.classify(frequency, 'unavailable'), 'island')
+
+    def test_invalid_frequency_sources_remain_unavailable(self):
+        for meter in ['0', 'unavailable', 'unknown', 'garbage', 'nan', 'inf', '71', '-1']:
+            with self.subTest(meter=meter):
+                frequency = self.frequency('0', meter)
+                self.assertEqual(frequency, 'unavailable')
+                self.assertEqual(self.classify(frequency, '373.2'), 'uncertain')
+
+    def test_fallback_still_requires_meter_power_and_inverter_data(self):
+        frequency = self.frequency('0', '50')
+        self.assertEqual(self.classify(frequency, 'unavailable'), 'uncertain')
+        self.assertEqual(self.classify(frequency, '373.2', 'off'), 'uncertain')
+
+    def test_meter_frequency_register_matches_live_sunspec_213_map(self):
+        hubs = yaml.safe_load((ROOT / 'modbus.yaml').read_text())
+        sensor = next(s for h in hubs for s in h.get('sensors', [])
+                      if s['name'] == 'fronius_meter_frequency')
+        self.assertEqual(sensor['slave'], 200)
+        self.assertEqual(sensor['address'], 40095)
+        self.assertEqual(sensor['data_type'], 'float32')
+
     def classify(self, frequency, meter, inverter='on'):
         rig = Rig()
         rig.states.update({'sensor.grid_frequency': frequency,

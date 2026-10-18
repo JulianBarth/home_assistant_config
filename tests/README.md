@@ -20,7 +20,12 @@ Dashboard tests check templates, availability and energy-flow scenarios.
 loss with a stale validity flag, invalid SOC/target ranges, and discharge
 fallback power balances including balcony generation. The iterative review in [`BUG_REVIEW.md`](../BUG_REVIEW.md) covers corrected
 raw-SoC loss, invalid manual targets, setup cancellation and timeout boundary
-handling. All **72 controller tests** pass without expected-failure markers.
+handling. All **79 controller tests** pass without expected-failure markers.
+
+`GridUncertaintyTests` also reproduces inverter sleep (inverter 0 Hz, meter
+50 Hz) through frequency selection, grid classification and manual-wallbox
+permission. It covers invalid sources, retained island priority, abnormal
+frequency, and the meter's verified SunSpec register mapping.
 
 The harness is deliberately smaller than Home Assistant. Passing tests do not
 replace its configuration check, observation of fresh live telemetry, or a

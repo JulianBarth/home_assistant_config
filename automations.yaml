@@ -1420,6 +1420,6 @@
     - service: notify.battery_log
       data:
         message: >
-          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"connection_status_changed","status":"{{ states('sensor.grid_connection_status') }}","frequency":"{{ states('sensor.grid_frequency') }}","meter":"{{ states('sensor.reading_energy_main_meter') }}"}
+          {"schema":2,"ts":"{{ now().isoformat() }}","type":"grid","event":"connection_status_changed","status":"{{ states('sensor.grid_connection_status') }}","frequency":"{{ states('sensor.grid_frequency') }}","frequency_source":"{{ state_attr('sensor.grid_frequency', 'source') }}","inverter_frequency":"{{ states('sensor.fronius_grid_frequency') }}","meter_frequency":"{{ states('sensor.fronius_meter_frequency') }}","meter":"{{ states('sensor.reading_energy_main_meter') }}"}
   mode: queued
   max: 5

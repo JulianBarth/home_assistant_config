@@ -36,8 +36,9 @@
       data_type: int16
       scan_interval: 60
       unique_id: fronius_ac_power_sf
-    # AC Frequency (Hz) - float32 at 40093 (SunSpec float map model 103, like
-    # the AC output at 40091). Island detection: in Notstrom/Inselbetrieb the
+    # AC Frequency (Hz) - float32 at 40093 (SunSpec float model 113).
+    # Returns zero while the inverter sleeps; use the meter fallback below.
+    # Island detection: in Notstrom/Inselbetrieb the
     # GEN24 runs its island at ~53 Hz — the grid never leaves 49.8-50.2 Hz
     - name: fronius_grid_frequency
       slave: 1
@@ -46,6 +47,15 @@
       scan_interval: 10
       unit_of_measurement: Hz
       unique_id: fronius_grid_frequency
+    # Smart Meter SunSpec float model 213: Hz at zero-based address 40095.
+    # Remains live while the inverter sleeps (verified: 50 Hz vs inverter 0 Hz).
+    - name: fronius_meter_frequency
+      slave: 200
+      address: 40095
+      data_type: float32
+      scan_interval: 10
+      unit_of_measurement: Hz
+      unique_id: fronius_meter_frequency
     - name: reading_energy_battery_soc_scaled
       slave: 1
       data_type: uint16
