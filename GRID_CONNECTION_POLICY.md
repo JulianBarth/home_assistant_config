@@ -6,7 +6,7 @@ four at normal frequency and twelve without a frequency reading.
 
 | Grid Connection Status | Evidence | Behavior |
 | --- | --- | --- |
-| `grid` | 49–51 Hz, numeric meter reading, valid inverter data | Manual wallbox Default allowed; automated grid-dependent controls after five continuous minutes |
+| `grid` | 49–51 Hz and numeric meter power reading | Manual wallbox Default allowed; automated grid-dependent controls after five continuous minutes |
 | `island` | 51.5–60 Hz, matching this GEN24 installation's tested ~53 Hz backup signature | Release battery restrictions immediately; confirm outage after one minute |
 | `uncertain` | Missing, invalid, or contradictory readings | Release battery restrictions, put wallbox in Eco, stop boost; no outage/restoration push |
 
@@ -27,6 +27,13 @@ mask inverter island evidence or an abnormal frequency. Both sources invalid
 still means unavailable/uncertain. The `source` attribute and grid transition
 log expose the chosen source and raw readings. Existing meter-power and
 inverter-data validity checks, island protection, and recovery delays remain.
+
+Grid classification is independent of battery SoC validity: losing battery
+telemetry must not force a manually selected wallbox Default back to Eco when
+frequency and meter power still establish a healthy grid. Battery operations
+independently require valid raw SoC in the physical range (0–100%, excluding
+zero as the installation's invalid-data sentinel). Nonfinite or out-of-range
+SoC is rejected by the validity sensor as well as by command guards.
 
 `binary_sensor.grid_available` is unavailable during uncertainty, off for a
 confirmed island and on after stable grid recovery. The separate

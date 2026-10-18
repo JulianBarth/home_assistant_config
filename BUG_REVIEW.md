@@ -250,3 +250,54 @@ This iteration adds three test methods. Before correction, the reproductions
 had six assertion failures and two conversion errors. After correction all
 72 Python tests and the JavaScript energy-flow scenarios pass. The offline
 harness does not reproduce Home Assistant scheduling or physical hardware.
+
+## 18 October 2026 — related telemetry and permission audit
+
+Following the sleeping-inverter frequency correction (`f079b51`), focused
+regressions were written and run before changing production YAML. The initial
+new scenarios reproduced 23 failing assertions/subcases. A second test-first
+iteration reproduced three failures involving reserve continuation and stale
+derived load estimates. These simulations establish code defects; they do not
+claim every injected failure occurred on the live installation.
+
+### BUG-10 — healthy grid coupled to battery telemetry
+
+`Grid Connection Status` required the battery SoC validity flag as well as
+valid frequency and meter power. Thus battery-only telemetry loss could force
+manual wallbox Default back to Eco despite continuing grid evidence. Grid
+classification now uses grid measurements; battery command guards still
+independently reject missing/invalid raw SoC. The previous policy tests that
+expected this unnecessary coupling were corrected.
+
+### BUG-11 — invalid SoC accepted by the shared validity sensor
+
+The validity flag accepted positive infinity and raw SoC above 10000, including
+65535. It now requires `0 < raw_soc <= 10000`, matching the command-level
+guards. Valid 0.01% through 100% readings remain accepted.
+
+### BUG-12 — car charging blocks reserve recovery or invents capacity
+
+The car/battery permission sensor required a cheap tariff even when reserve
+recovery was necessary, leaving the battery below reserve while the car charged.
+It now permits recovery under the same reserve start threshold as the battery
+controller, continuing to the reserve target after the start threshold is
+crossed. This still requires capacity headroom. Missing/malformed/nonfinite
+power or capacity values no longer default to apparently spare capacity; raw
+meter and inverter power must also be present so a stale derived house estimate
+cannot hide upstream loss. Nonemergency charging requires valid finite prices.
+The suspected currency-unit mismatch was ruled out: the average is already in
+Cent/kWh and the existing EUR-to-cent conversion is retained.
+
+### BUG-13 — delayed charge/hold calls can undo cleanup
+
+`hold_battery_soc` did not recheck grid permission, automation master, or raw SoC
+when executed. A delayed call after cleanup could restore the discharge
+restriction and StorCtl. It now validates those permissions before any write.
+`charge_battery_to_target` also rechecks automatic/manual authorization, rejecting
+a queued automatic charge after master-off while preserving explicit manual
+charging with automatic control disabled.
+
+Verification: 96 Python tests, JavaScript energy-flow scenarios and Git
+whitespace checks pass. The new complete reserve transition scenario exercises
+9%, 11%, 14%, and 15% SoC with actual production YAML actions, including taper,
+target completion, unchanged manual Default and retained car protection.

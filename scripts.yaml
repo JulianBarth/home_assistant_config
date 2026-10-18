@@ -163,6 +163,14 @@ hold_battery_soc:
   alias: "Hold Battery SOC"
   description: "Hold battery at target SOC by preventing discharge while allowing solar charging"
   sequence:
+    # Recheck when executed: a delayed hold must not undo safety/master cleanup.
+    - condition: template
+      value_template: >
+        {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=-1) %}
+        {{ is_state('binary_sensor.grid_control_ready', 'on')
+           and is_state('binary_sensor.inverter_data_valid', 'on')
+           and is_state('input_boolean.battery_automation_on', 'on')
+           and 0 < soc <= 10000 }}
     # OutWRte - Set discharge to 1% (minimal discharge - prevents battery from draining)
     - service: modbus.write_register
       data:
@@ -458,6 +466,8 @@ charge_battery_to_target:
         {% set target = states('input_number.battery_target_soc') | float(default=-1) %}
         {{ is_state('binary_sensor.inverter_data_valid', 'on')
            and is_state('binary_sensor.grid_control_ready', 'on')
+           and (is_state('input_boolean.battery_automation_on', 'on')
+                or is_state('input_boolean.manual_battery_charge', 'on'))
            and 0 < soc <= 10000 and 0 < target <= 100
            and soc < target * 100 }}
     - choose:

@@ -20,7 +20,7 @@ Dashboard tests check templates, availability and energy-flow scenarios.
 loss with a stale validity flag, invalid SOC/target ranges, and discharge
 fallback power balances including balcony generation. The iterative review in [`BUG_REVIEW.md`](../BUG_REVIEW.md) covers corrected
 raw-SoC loss, invalid manual targets, setup cancellation and timeout boundary
-handling. All **79 controller tests** pass without expected-failure markers.
+handling. All **96 controller tests** pass without expected-failure markers.
 
 `GridUncertaintyTests` also reproduces inverter sleep (inverter 0 Hz, meter
 50 Hz) through frequency selection, grid classification and manual-wallbox
@@ -52,3 +52,12 @@ installation baseline and application instructions.
 
 `DischargeCommandBoundaryTests` covers delayed watchdog execution after master-off
 and rejects invalid percentages before Modbus register conversion.
+
+The 18 October follow-up adds grid/battery telemetry independence, finite SoC
+validation, execution-time charge/hold permission, and simultaneous car/battery
+reserve recovery. The reserve scenario runs actual production decisions and
+register actions from 9% through the 15% target, retaining manual Default and
+car discharge protection. Capacity checks reject invalid load readings and lost
+upstream power even when a derived house estimate remains numeric. Signed
+import/export readings remain supported; the two tariff sensors intentionally
+use EUR/kWh and Cent/kWh and are compared after conversion.

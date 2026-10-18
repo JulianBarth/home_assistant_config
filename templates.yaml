@@ -52,8 +52,8 @@
       device_class: connectivity
       icon: mdi:database-check
       state: >
-        {% set soc = states('sensor.reading_energy_battery_soc_scaled') %}
-        {{ soc not in ['unavailable', 'unknown', 'none', 'None'] and soc | float(default=0) > 0 }}
+        {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=-1) %}
+        {{ 0 < soc <= 10000 }}
 
 # ============================================================================
 # Grid classification: missing data is uncertainty, never proof of an outage.
@@ -93,8 +93,10 @@
         {% set meter = states('sensor.reading_energy_main_meter') %}
         {% if 51.5 <= freq <= 60 %}
           island
-        {% elif 49 <= freq <= 51 and is_number(meter)
-                and is_state('binary_sensor.inverter_data_valid', 'on') %}
+        {# Battery SoC availability is not grid evidence. Battery scripts keep
+           their own validity gates; a healthy meter must still allow manual
+           wallbox charging when only battery telemetry is lost. #}
+        {% elif 49 <= freq <= 51 and is_number(meter) %}
           grid
         {% else %}
           uncertain
@@ -743,18 +745,38 @@
       unique_id: should_charge_battery_during_car_charging
       icon: mdi:ev-station
       state: >
-        {% set car_power = states('sensor.wattpilot_charging_power') | float(default=0) %}
-        {% set home_power = states('sensor.house_consumption') | float(default=2000) %}
-        {% set battery_charge_rate = states('input_number.battery_charge_rate_max') | float(default=5000) %}
-        {% set grid_capacity = states('input_number.grid_connection_capacity') | float(default=20000) %}
-        {% set current_price_cents = states('sensor.tibber_cached_energy_prices') | float(default=999) * 100 %}
-        {% set avg_price = states('sensor.tibber_energy_average_price_next_12_hours') | float(default=999) %}
-
-        {% set total_load = car_power + home_power + battery_charge_rate %}
-        {% set load_ok = total_load < (grid_capacity * 0.9) %}
-        {% set price_very_low = current_price_cents < (avg_price * 0.8) %}
-
-        {{ load_ok and price_very_low }}
+        {% set car_raw = states('sensor.wattpilot_charging_power') %}
+        {% set house_raw = states('sensor.house_consumption') %}
+        {% set charge_raw = states('input_number.battery_charge_rate_max') %}
+        {% set capacity_raw = states('input_number.grid_connection_capacity') %}
+        {% set car_power = car_raw | float(default=-1) %}
+        {% set home_power = house_raw | float(default=-1) %}
+        {% set charge_power = charge_raw | float(default=-1) %}
+        {% set capacity = capacity_raw | float(default=-1) %}
+        {# Missing power must not become zero and invent spare grid capacity. #}
+        {% set load_valid = is_number(car_raw) and is_number(house_raw)
+             and is_number(charge_raw) and is_number(capacity_raw)
+             and is_number(states('sensor.reading_energy_main_meter'))
+             and is_number(states('sensor.reading_energy_inverter_ac_output'))
+             and car_power >= 0 and home_power >= 0 and charge_power > 0 and capacity > 0 %}
+        {% set load_ok = load_valid and (car_power + home_power + charge_power) < capacity * 0.9 %}
+        {% set price_raw = states('sensor.tibber_cached_energy_prices') %}
+        {% set average_raw = states('sensor.tibber_energy_average_price_next_12_hours') %}
+        {% set price_valid = is_state('binary_sensor.tibber_cached_price_data_valid', 'on')
+             and is_number(price_raw) and is_number(average_raw) %}
+        {# Current tariff is EUR/kWh; the average sensor is already Cent/kWh. #}
+        {% set price_very_low = price_valid and (price_raw | float(default=999) * 100)
+             < (average_raw | float(default=0)) * 0.8 %}
+        {% set soc = states('sensor.reading_energy_battery_soc_scaled') | float(default=-1) %}
+        {% set reserve = states('input_number.soc_target_default') | float(default=15) %}
+        {# Match Should Start Charging: reserve recovery is protective, not a
+           cheap-price optimization. Capacity and telemetry gates still apply. #}
+        {% set reserve_breached = 0 < soc < (reserve - 5) * 100 %}
+        {# Keep recovery allowed up to reserve; crossing the start threshold
+           must not cancel the charge halfway to its target. #}
+        {% set reserve_recovery = reserve_breached or
+             (is_state('input_boolean.battery_charging_active', 'on') and 0 < soc < reserve * 100) %}
+        {{ load_ok and 0 < soc <= 10000 and (price_very_low or reserve_recovery) }}
 
 # Surplus discharge budget for summer/strong-solar nights.
 # Intent: if the battery clearly contains more energy than the house is likely

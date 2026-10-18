@@ -247,10 +247,11 @@ class GridUncertaintyTests(unittest.TestCase):
                 self.assertEqual(frequency, 'unavailable')
                 self.assertEqual(self.classify(frequency, '373.2'), 'uncertain')
 
-    def test_fallback_still_requires_meter_power_and_inverter_data(self):
+    def test_fallback_still_requires_meter_power(self):
         frequency = self.frequency('0', '50')
         self.assertEqual(self.classify(frequency, 'unavailable'), 'uncertain')
-        self.assertEqual(self.classify(frequency, '373.2', 'off'), 'uncertain')
+        # Battery telemetry validity must not invalidate measured grid evidence.
+        self.assertEqual(self.classify(frequency, '373.2', 'off'), 'grid')
 
     def test_meter_frequency_register_matches_live_sunspec_213_map(self):
         hubs = yaml.safe_load((ROOT / 'modbus.yaml').read_text())
@@ -281,7 +282,7 @@ class GridUncertaintyTests(unittest.TestCase):
             ('unavailable', 'unavailable', 'on', 'uncertain'),
             ('unavailable', '0', 'on', 'uncertain'),
             ('0', '10', 'on', 'uncertain'), ('70', '10', 'on', 'uncertain'),
-            ('50', 'nan', 'on', 'uncertain'), ('50', '10', 'off', 'uncertain'),
+            ('50', 'nan', 'on', 'uncertain'), ('50', '10', 'off', 'grid'),
             ('53', 'unavailable', 'on', 'island'), ('53', '0', 'on', 'island')]:
             with self.subTest(freq=freq, meter=meter, inverter=inverter):
                 self.assertEqual(self.classify(freq, meter, inverter), expected)
