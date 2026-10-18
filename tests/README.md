@@ -20,7 +20,7 @@ Dashboard tests check templates, availability and energy-flow scenarios.
 loss with a stale validity flag, invalid SOC/target ranges, and discharge
 fallback power balances including balcony generation. The iterative review in [`BUG_REVIEW.md`](../BUG_REVIEW.md) covers corrected
 raw-SoC loss, invalid manual targets, setup cancellation and timeout boundary
-handling. All **96 controller tests** pass without expected-failure markers.
+handling. All **101 controller tests** pass without expected-failure markers.
 
 `GridUncertaintyTests` also reproduces inverter sleep (inverter 0 Hz, meter
 50 Hz) through frequency selection, grid classification and manual-wallbox
@@ -61,3 +61,7 @@ car discharge protection. Capacity checks reject invalid load readings and lost
 upstream power even when a derived house estimate remains numeric. Signed
 import/export readings remain supported; the two tariff sensors intentionally
 use EUR/kWh and Cent/kWh and are compared after conversion.
+
+`DiagnosticReloadTests` reproduces the two live errors caused by missing entity
+check attributes during reload, verifies an unavailable-data message instead of
+an exception or false all-clear, and retains normal healthy/problem reports.

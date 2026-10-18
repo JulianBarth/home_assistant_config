@@ -48,6 +48,48 @@ class TemplateRig(Rig):
                                 trigger=SimpleNamespace(id=trigger))
         return ast.literal_eval(self.render(SENSORS['Battery Charge Cycle Tracker']['attributes']['data']))
 
+
+class DiagnosticReloadTests(unittest.TestCase):
+    def test_missing_diagnostic_lists_do_not_throw_or_claim_all_clear(self):
+        rig = TemplateRig()
+        for attribute in ['diagnosis', 'recommendations']:
+            with self.subTest(attribute=attribute):
+                text = rig.render(SENSORS['Sankey Debug Info']['attributes'][attribute])
+                self.assertIn('unavailable', text.lower())
+                self.assertNotIn('All entities are available', text)
+
+    def test_available_empty_diagnostic_lists_report_healthy(self):
+        rig = TemplateRig()
+        for name in ['unavailable_entities', 'invalid_entities']:
+            rig.attrs[('sensor.sankey_entity_check', name)] = []
+        self.assertIn('All entities are available', rig.render(
+            SENSORS['Sankey Debug Info']['attributes']['diagnosis']))
+
+    def test_partially_initialized_diagnostic_lists_are_not_all_clear(self):
+        rig = TemplateRig()
+        rig.attrs[('sensor.sankey_entity_check', 'unavailable_entities')] = []
+        for attribute in ['diagnosis', 'recommendations']:
+            with self.subTest(attribute=attribute):
+                self.assertIn('unavailable', rig.render(
+                    SENSORS['Sankey Debug Info']['attributes'][attribute]).lower())
+
+    def test_invalid_only_diagnostic_does_not_recommend_all_clear(self):
+        rig = TemplateRig()
+        rig.attrs[('sensor.sankey_entity_check', 'unavailable_entities')] = []
+        rig.attrs[('sensor.sankey_entity_check', 'invalid_entities')] = ['sensor.total_solar_power']
+        text = rig.render(SENSORS['Sankey Debug Info']['attributes']['recommendations'])
+        self.assertIn('invalid', text.lower())
+        self.assertNotIn('No issues detected', text)
+
+    def test_real_unavailable_entities_keep_their_diagnosis_and_recommendation(self):
+        rig = TemplateRig()
+        rig.attrs[('sensor.sankey_entity_check', 'unavailable_entities')] = ['sensor.total_solar_power']
+        rig.attrs[('sensor.sankey_entity_check', 'invalid_entities')] = []
+        self.assertIn('1 entities are unavailable', rig.render(
+            SENSORS['Sankey Debug Info']['attributes']['diagnosis']))
+        self.assertIn('Check Fronius Modbus connection', rig.render(
+            SENSORS['Sankey Debug Info']['attributes']['recommendations']))
+
 class ForecastTests(unittest.TestCase):
     def planner(self, when):
         rig = TemplateRig(when)

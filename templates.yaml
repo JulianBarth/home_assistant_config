@@ -1411,7 +1411,9 @@
         diagnosis: >
           {% set unavailable = state_attr('sensor.sankey_entity_check', 'unavailable_entities') %}
           {% set invalid = state_attr('sensor.sankey_entity_check', 'invalid_entities') %}
-          {% if unavailable | length > 0 %}
+          {% if unavailable is none or invalid is none %}
+            Diagnostic data unavailable; waiting for entity checks.
+          {% elif unavailable | length > 0 %}
             ISSUE: {{ unavailable | length }} entities are unavailable. Check their source sensors.
           {% elif invalid | length > 0 %}
             ISSUE: {{ invalid | length }} entities have invalid values. Check template calculations.
@@ -1420,6 +1422,10 @@
           {% endif %}
         recommendations: >
           {% set unavailable = state_attr('sensor.sankey_entity_check', 'unavailable_entities') %}
+          {% set invalid = state_attr('sensor.sankey_entity_check', 'invalid_entities') %}
+          {% if unavailable is none or invalid is none %}
+            Diagnostic data unavailable; wait for entity checks before troubleshooting.
+          {% else %}
           {% if 'sensor.total_solar_power' in unavailable or 'sensor.fronius_solar_power' in unavailable %}
             - Check Fronius Modbus connection (IP: 192.168.178.92)
           {% endif %}
@@ -1432,8 +1438,12 @@
           {% if 'sensor.battery_power' in unavailable %}
             - Check charging_state and energy sensors
           {% endif %}
-          {% if unavailable | length == 0 %}
+          {% if invalid | length > 0 %}
+            - Review invalid sensor values and their template calculations.
+          {% endif %}
+          {% if unavailable | length == 0 and invalid | length == 0 %}
             No issues detected. Sankey chart should display correctly.
+          {% endif %}
           {% endif %}
 
 # ============================================================================

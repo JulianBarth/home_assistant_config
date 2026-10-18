@@ -301,3 +301,17 @@ Verification: 96 Python tests, JavaScript energy-flow scenarios and Git
 whitespace checks pass. The new complete reserve transition scenario exercises
 9%, 11%, 14%, and 15% SoC with actual production YAML actions, including taper,
 target completion, unchanged manual Default and retained car protection.
+
+### BUG-14 — diagnostic templates fail during reload initialization
+
+The 08:16:07 live reload produced two TemplateErrors: `len(None)` in diagnosis
+and membership testing against None in recommendations. Source attributes can
+briefly be absent while template entities initialize. Five tests were added
+first; both missing-attribute subcases reproduced the exact live TypeErrors.
+The templates now report diagnostic data unavailable until the source lists
+exist, instead of throwing or implying that all measurements are healthy.
+Two further failing assertions reproduced partial initialization and invalid-only
+readings incorrectly receiving an all-clear recommendation; both now report
+the missing or invalid data. Known healthy and unavailable lists retain their reports.
+Final verification after this follow-up: 101 Python tests and the JS energy-flow
+scenarios pass. This changes diagnostics only, not control permissions.
