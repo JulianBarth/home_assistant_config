@@ -46,3 +46,11 @@ diagnostics/
 # Reproducible repair for the installed Wattpilot custom integration
 !tools/wattpilot-connection-repair.patch
 !tools/test_wattpilot_connection.py
+
+# Historical inputs and reproducible model validation
+!tools/analyze_usage.py
+!tests/test_usage_forecast.py
+
+!tools/seasonal_model.py
+!tools/backtest_seasonal_model.py
+!tests/test_seasonal_model.py

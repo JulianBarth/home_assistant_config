@@ -33,6 +33,11 @@ The automations and scripts make use of the following Home Assistant integration
 
 See [OPERATIONAL_FIXES.md](OPERATIONAL_FIXES.md) for grid uncertainty handling, forecast date selection, power-flow corrections, accounting limits and the structured logger deployment.
 
+See [YEAR_ROUND_MODEL.md](YEAR_ROUND_MODEL.md) for the Reutlingen annual model:
+local daylight and clock changes, recent weekday/weekend demand, conservative
+half-hourly PV forecasts, battery targets and car-loan reserve checks. The prior
+single-season experiment is recorded in [HISTORICAL_OPTIMIZATION.md](HISTORICAL_OPTIMIZATION.md).
+
 ## Current Issues & Areas for Improvement
 The system has undergone significant improvements:
 

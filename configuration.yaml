@@ -406,6 +406,47 @@ utility_meter:
 
 # Structured algorithm logging (using command_line integration)
 command_line:
+  - sensor:
+      name: Reutlingen Energy Model
+      unique_id: reutlingen_energy_model
+      command: >-
+        python3 /config/tools/seasonal_model.py --history-root /config --payload '{%- set reserve = states('input_number.soc_target_default') | float(15) -%}
+        {%- set floor = ([states('input_number.car_boost_min_soc') | float(30), reserve + 5] | max) + states('input_number.car_boost_floor_margin_pct') | float(10) -%}
+        {%- set floor = ([floor, states('input_number.car_boost_island_floor_soc') | float(75)] | max) if is_state('binary_sensor.grid_available', 'off') else floor -%}
+        {%- set payload = dict(
+          when=now().isoformat(),
+          night_rate=states('input_number.night_consumption_rate_wh'),
+          day_rate=states('input_number.day_consumption_rate_wh'),
+          weekday_wake=states('input_number.weekday_wake_hour'),
+          weekend_wake=states('input_number.weekend_wake_hour'),
+          sleep_hour=states('input_number.sleep_hour'),
+          capacity_wh=states('input_number.battery_capacity_wh'),
+          reserve_soc=reserve, soc=(states('sensor.reading_energy_battery_soc_scaled') | float(0) / 100) if is_number(states('sensor.reading_energy_battery_soc_scaled')) else 0, car_floor_soc=floor,
+          safety_margin_wh=states('input_number.battery_surplus_safety_margin_wh'),
+          low_solar_threshold_wh=states('input_number.low_solar_threshold_wh'),
+          solar_confidence_pct=states('input_number.car_boost_solar_confidence_pct'),
+          forecast_updated_at=states('sensor.solcast_pv_forecast_zeitpunkt_letzter_api_abruf'),
+          today_solar_kwh=states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute'),
+          tomorrow_solar_kwh=states('sensor.solcast_pv_forecast_prognose_morgen'),
+          forecast=(state_attr('sensor.solcast_pv_forecast_prognose_heute', 'detailedForecast') or []) +
+                   (state_attr('sensor.solcast_pv_forecast_prognose_morgen', 'detailedForecast') or [])) -%}
+        {{- payload | to_json | base64_encode -}}'
+      scan_interval: 300
+      command_timeout: 30
+      value_template: "{{ value_json.generated_at }}"
+      json_attributes:
+        - version
+        - location
+        - timezone
+        - forecast_status
+        - charge_efficiency
+        - discharge_efficiency
+        - accepted_history_samples
+        - learned_hour_groups
+        - calendar
+        - battery
+        - surplus
+        - car
   - notify:
       name: battery_log
       command: "python3 /config/tools/battery_log.py"

@@ -1,5 +1,6 @@
 """Regression scenarios for forecast dates, power balances, accounting and logging."""
 import ast
+import base64
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import gzip
@@ -8,12 +9,16 @@ import math
 from pathlib import Path
 import subprocess
 import sys
+import shlex
 import tempfile
 from types import SimpleNamespace
 import unittest
 from zoneinfo import ZoneInfo
 
 from test_battery_control import Rig, ROOT, SENSORS, TEMPLATES
+
+sys.path.insert(0, str(ROOT / 'tools'))
+from seasonal_model import build_model
 
 ZONE = ZoneInfo('Europe/Berlin')
 
@@ -47,6 +52,23 @@ class TemplateRig(Rig):
         self.env.globals.update(this=SimpleNamespace(attributes={'data': previous}),
                                 trigger=SimpleNamespace(id=trigger))
         return ast.literal_eval(self.render(SENSORS['Battery Charge Cycle Tracker']['attributes']['data']))
+
+
+def attach_year_model(rig, records=()):
+    """Render the actual production input command, then run its pure model."""
+    import yaml
+    text = (ROOT / 'configuration.yaml').read_text().split('command_line:\n', 1)[1].split('\n# Archive', 1)[0]
+    command = yaml.safe_load(text)[0]['sensor']['command']
+    rig.env.filters.update(to_json=lambda value: json.dumps(value, default=str),
+                           base64_encode=lambda value: base64.b64encode(value.encode()).decode())
+    argv = shlex.split(rig.render(command))
+    assert argv[:5] == ['python3', '/config/tools/seasonal_model.py', '--history-root', '/config', '--payload']
+    assert len(argv) == 6
+    result = build_model(json.loads(base64.b64decode(argv[5], validate=True)), records)
+    rig.states['sensor.reutlingen_energy_model'] = result['generated_at']
+    for key, value in result.items():
+        rig.attrs[('sensor.reutlingen_energy_model', key)] = value
+    return result
 
 
 class DiagnosticReloadTests(unittest.TestCase):
@@ -99,6 +121,7 @@ class ForecastTests(unittest.TestCase):
                            'binary_sensor.battery_charging_is_profitable_enhanced':'on',
                            'sensor.tibber_cached_energy_prices':'0.2'})
         rig.attrs[('sun.sun', 'next_rising')] = '2026-10-17T07:45:00+02:00'
+        attach_year_model(rig)
         return rig
 
     def debug(self, rig):

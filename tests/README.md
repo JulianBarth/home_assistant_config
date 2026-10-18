@@ -20,7 +20,7 @@ Dashboard tests check templates, availability and energy-flow scenarios.
 loss with a stale validity flag, invalid SOC/target ranges, and discharge
 fallback power balances including balcony generation. The iterative review in [`BUG_REVIEW.md`](../BUG_REVIEW.md) covers corrected
 raw-SoC loss, invalid manual targets, setup cancellation and timeout boundary
-handling. All **101 controller tests** pass without expected-failure markers.
+handling. The expanded suite passes without expected-failure markers.
 
 `GridUncertaintyTests` also reproduces inverter sleep (inverter 0 Hz, meter
 50 Hz) through frequency selection, grid classification and manual-wallbox
@@ -30,6 +30,14 @@ frequency, and the meter's verified SunSpec register mapping.
 The harness is deliberately smaller than Home Assistant. Passing tests do not
 replace its configuration check, observation of fresh live telemetry, or a
 physical backup-power test.
+
+`test_usage_forecast.py` checks private historical input recovery, filtering,
+deduplication and chronological holdout isolation. `test_seasonal_model.py`
+checks Reutlingen's annual solar calendar, leap years, actual elapsed time over
+DST transitions, recent-demand learning and fallback, half-hour PV units and
+forecast freshness, pre-sunrise reserves and the actual production command
+payload and shared YAML consumers. See `YEAR_ROUND_MODEL.md` for evidence,
+deployment scope and the distinction between scenario tests and winter data.
 
 Run only the new ongoing-charge scenarios:
 

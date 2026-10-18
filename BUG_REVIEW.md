@@ -315,3 +315,38 @@ readings incorrectly receiving an all-clear recommendation; both now report
 the missing or invalid data. Known healthy and unavailable lists retain their reports.
 Final verification after this follow-up: 101 Python tests and the JS energy-flow
 scenarios pass. This changes diagnostics only, not control permissions.
+# Year-round model regression review — 18 October 2026
+
+Nine additional behavioral test methods reproduced defects before production
+changes. The first run had three failures and two errors; the telemetry run
+had seven failing assertions, including raw-SoC subcases. Evidence is retained
+in ignored `diagnostics/2026-10-18/year-model-release/`.
+
+- AC household demand was treated as lossless battery energy. Directional
+  efficiency assumptions now convert demand/refill/budget units consistently.
+- Gross future PV could finance a car loan even when most early output spills
+  from a full battery and later demand exhausts storage. A finite-capacity
+  trajectory now limits loans through the following night's recovery.
+- Four quarter-hour points could classify recovery as a full hour even when
+  sunset precedes that hour's end. The entire hour must precede sunset.
+- Non-dictionary inverter/car records could crash demand fitting. Malformed
+  measurement objects are now ignored.
+- A zero capacity helper caused division by zero in the target template.
+  Invalid/nonfinite capacities use a bounded fallback consistent with the model.
+- A fresh snapshot and stale derived SoC could leave a positive car budget,
+  permit a boost start or advertise extra discharge after raw SoC disappeared.
+  Those decisions now reject missing/nonfinite/invalid raw SoC immediately and
+  use the lower valid raw/derived value when checking current energy.
+
+A final failing regression found that an unavailable balcony inverter at night
+would incorrectly mark healthy household power invalid and eventually prevent
+seasonal learning. The logger now separates balcony validity from the main
+power balance; dark-hour learning does not need balcony telemetry, while
+new daylight samples still require it.
+
+All **137 Python tests** pass after fixes; existing hardware-control tests remain
+included. These are offline fault-injection results, not induced live failures.
+The release scope includes the reviewed year-round implementation, its data
+analysis tools, documentation and regression tests. Deployment is limited to
+`configuration.yaml`, `templates.yaml`, `automations.yaml` and
+`tools/seasonal_model.py`; unrelated scripts/integrations are unchanged.
