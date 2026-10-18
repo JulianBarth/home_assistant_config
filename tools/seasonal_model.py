@@ -371,7 +371,7 @@ def build_model(settings, records=()):
         'current_stored_wh': max(0, (soc - reserve) / 100 * capacity),
     }
     return {
-        'version': VERSION, 'generated_at': when.isoformat(),
+        'version': VERSION, 'generated_at': when.isoformat(), 'inputs_ready': 0 < soc <= 100,
         'location': 'Reutlingen', 'latitude': LATITUDE, 'longitude': LONGITUDE,
         'timezone': 'Europe/Berlin', 'forecast_status': pv.status,
         'charge_efficiency': charge_eff, 'discharge_efficiency': discharge_eff,

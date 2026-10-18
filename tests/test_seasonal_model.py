@@ -200,6 +200,27 @@ class AdaptiveDemandTests(unittest.TestCase):
 
 
 class AnnualControlTests(unittest.TestCase):
+    def test_snapshot_taken_before_soc_initialization_cannot_start_optimization(self):
+        rig = TemplateRig()
+        rig.states.update({'sensor.reading_energy_battery_soc_scaled': 'unknown',
+                           'sensor.tibber_energy_price_percentile_next_12_hours': '20',
+                           'binary_sensor.battery_charging_is_profitable_enhanced': 'on'})
+        attach_year_model(rig)
+        rig.states['sensor.reading_energy_battery_soc_scaled'] = '9000'
+        rig.states['sensor.batterie_soc'] = '90'
+        self.assertEqual(float(rig.render(SENSORS['Battery Optimization Data']['state'])), 15)
+
+    def test_real_solcast_datetimes_are_normalized_before_json_serialization(self):
+        rig = TemplateRig('2026-06-21T10:00:00+02:00')
+        rig.states.update({'sensor.batterie_soc': '90', 'sensor.reading_energy_battery_soc_scaled': '9000',
+                           'sensor.solcast_pv_forecast_zeitpunkt_letzter_api_abruf': rig.when.isoformat()})
+        rows = forecast(rig.when, 20)
+        for row in rows:
+            row['period_start'] = instant(row['period_start']).astimezone(ZONE)
+            row['unused_metadata'] = rig.when
+        rig.attrs[('sensor.solcast_pv_forecast_prognose_heute', 'detailedForecast')] = rows
+        self.assertEqual(attach_year_model(rig)['forecast_status'], 'fresh_p10')
+
     def test_raw_soc_loss_cannot_leave_positive_car_budget(self):
         rig = TemplateRig('2026-06-21T10:00:00+02:00')
         rig.states.update({'sensor.batterie_soc': '90', 'sensor.reading_energy_battery_soc_scaled': '9000',

@@ -314,7 +314,7 @@
       icon: mdi:chart-timeline-variant
       state: >
         {% set model_stamp = as_timestamp(states('sensor.reutlingen_energy_model'), default=0) | float(0) %}
-        {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 %}
+        {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 and state_attr('sensor.reutlingen_energy_model', 'inputs_ready') == true %}
         {% set data = state_attr('sensor.reutlingen_energy_model', 'battery') or dict(bridge_type='model_unavailable', bridge_hours=0, bridge_consumption_wh=0, energy_deficit_wh=0, expected_solar_wh=0, usable_solar_wh=0, sunrise_hour=0, solar_start=24, max_grid_target=15, is_low_solar_day=true) %}
         {% set default_target = states('input_number.soc_target_default') | float(15) %}
         {% set battery_capacity = states('input_number.battery_capacity_wh') | float(10000) %}
@@ -371,7 +371,7 @@
       attributes:
         calculation_data: >
           {% set model_stamp = as_timestamp(states('sensor.reutlingen_energy_model'), default=0) | float(0) %}
-          {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 %}
+          {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 and state_attr('sensor.reutlingen_energy_model', 'inputs_ready') == true %}
           {% set data = state_attr('sensor.reutlingen_energy_model', 'battery') or dict(bridge_type='model_unavailable', bridge_hours=0, bridge_consumption_wh=0, energy_deficit_wh=0, expected_solar_wh=0, usable_solar_wh=0, sunrise_hour=0, solar_start=24, max_grid_target=15, is_low_solar_day=true) %}
           {% set default_target = states('input_number.soc_target_default') | float(15) %}
           {% set battery_capacity = states('input_number.battery_capacity_wh') | float(10000) %}
@@ -612,7 +612,7 @@
       icon: mdi:battery-arrow-down-outline
       state: >
         {% set model_stamp = as_timestamp(states('sensor.reutlingen_energy_model'), default=0) | float(0) %}
-        {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 %}
+        {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 and state_attr('sensor.reutlingen_energy_model', 'inputs_ready') == true %}
         {% set d = state_attr('sensor.reutlingen_energy_model', 'surplus') or {} %}
         {% set reserve_soc = states('input_number.soc_target_default') | float(15) %}
         {% set current_soc = states('sensor.batterie_soc') | float(0) %}
@@ -637,7 +637,7 @@
       attributes:
         calculation_data: >
           {% set model_stamp = as_timestamp(states('sensor.reutlingen_energy_model'), default=0) | float(0) %}
-          {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 %}
+          {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 and state_attr('sensor.reutlingen_energy_model', 'inputs_ready') == true %}
           {% set d = state_attr('sensor.reutlingen_energy_model', 'surplus') or {} %}
           {% set reserve_soc = states('input_number.soc_target_default') | float(15) %}
           {% set current_soc = states('sensor.batterie_soc') | float(0) %}
@@ -1514,7 +1514,7 @@
       icon: mdi:car-electric-outline
       state: >
         {% set model_stamp = as_timestamp(states('sensor.reutlingen_energy_model'), default=0) | float(0) %}
-        {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 %}
+        {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 and state_attr('sensor.reutlingen_energy_model', 'inputs_ready') == true %}
         {% set d = state_attr('sensor.reutlingen_energy_model', 'car') or {} %}
         {% set soc = states('sensor.batterie_soc') | float(0) %}
         {% set raw_soc = states('sensor.reading_energy_battery_soc_scaled') | float(-1) %}
@@ -1535,7 +1535,7 @@
           {{ (([normal_floor, island_floor] | max) if island else normal_floor) | round(0) }}
         calculation_data: >
           {% set model_stamp = as_timestamp(states('sensor.reutlingen_energy_model'), default=0) | float(0) %}
-          {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 %}
+          {% set model_valid = 0 <= as_timestamp(now()) - model_stamp < 900 and state_attr('sensor.reutlingen_energy_model', 'inputs_ready') == true %}
           {% set d = state_attr('sensor.reutlingen_energy_model', 'car') or {} %}
           {% set soc = states('sensor.batterie_soc') | float(0) %}
           {% set raw_soc = states('sensor.reading_energy_battery_soc_scaled') | float(-1) %}

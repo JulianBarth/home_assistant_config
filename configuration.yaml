@@ -413,6 +413,14 @@ command_line:
         python3 /config/tools/seasonal_model.py --history-root /config --payload '{%- set reserve = states('input_number.soc_target_default') | float(15) -%}
         {%- set floor = ([states('input_number.car_boost_min_soc') | float(30), reserve + 5] | max) + states('input_number.car_boost_floor_margin_pct') | float(10) -%}
         {%- set floor = ([floor, states('input_number.car_boost_island_floor_soc') | float(75)] | max) if is_state('binary_sensor.grid_available', 'off') else floor -%}
+        {%- set periods = namespace(rows=[]) -%}
+        {%- for row in (state_attr('sensor.solcast_pv_forecast_prognose_heute', 'detailedForecast') or []) + (state_attr('sensor.solcast_pv_forecast_prognose_morgen', 'detailedForecast') or []) -%}
+          {%- set period = dict(period_start=row.period_start | string, pv_estimate=row.pv_estimate) -%}
+          {%- if row.pv_estimate10 is defined -%}
+            {%- set period = dict(period, pv_estimate10=row.pv_estimate10) -%}
+          {%- endif -%}
+          {%- set periods.rows = periods.rows + [period] -%}
+        {%- endfor -%}
         {%- set payload = dict(
           when=now().isoformat(),
           night_rate=states('input_number.night_consumption_rate_wh'),
@@ -428,14 +436,14 @@ command_line:
           forecast_updated_at=states('sensor.solcast_pv_forecast_zeitpunkt_letzter_api_abruf'),
           today_solar_kwh=states('sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute'),
           tomorrow_solar_kwh=states('sensor.solcast_pv_forecast_prognose_morgen'),
-          forecast=(state_attr('sensor.solcast_pv_forecast_prognose_heute', 'detailedForecast') or []) +
-                   (state_attr('sensor.solcast_pv_forecast_prognose_morgen', 'detailedForecast') or [])) -%}
+          forecast=periods.rows) -%}
         {{- payload | to_json | base64_encode -}}'
       scan_interval: 300
       command_timeout: 30
       value_template: "{{ value_json.generated_at }}"
       json_attributes:
         - version
+        - inputs_ready
         - location
         - timezone
         - forecast_status

@@ -317,7 +317,7 @@ Final verification after this follow-up: 101 Python tests and the JS energy-flow
 scenarios pass. This changes diagnostics only, not control permissions.
 # Year-round model regression review — 18 October 2026
 
-Nine additional behavioral test methods reproduced defects before production
+Eleven additional behavioral test methods reproduced defects before production
 changes. The first run had three failures and two errors; the telemetry run
 had seven failing assertions, including raw-SoC subcases. Evidence is retained
 in ignored `diagnostics/2026-10-18/year-model-release/`.
@@ -344,7 +344,15 @@ seasonal learning. The logger now separates balcony validity from the main
 power balance; dark-hour learning does not need balcony telemetry, while
 new daylight samples still require it.
 
-All **137 Python tests** pass after fixes; existing hardware-control tests remain
+Live verification exposed the production Solcast datetime type: strict JSON
+serialization rejected datetime objects although the earlier fixture silently
+converted them to strings. A regression now uses real datetime rows and a
+strict serializer; the payload explicitly normalizes only supported fields.
+A further initially failing startup test prevents a fresh snapshot captured
+before valid SoC initialization from starting elective optimization after raw
+telemetry returns. Model readiness is checked separately from timestamp age.
+
+All **139 Python tests** pass after fixes; existing hardware-control tests remain
 included. These are offline fault-injection results, not induced live failures.
 The release scope includes the reviewed year-round implementation, its data
 analysis tools, documentation and regression tests. Deployment is limited to

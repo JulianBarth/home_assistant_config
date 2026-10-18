@@ -59,7 +59,7 @@ def attach_year_model(rig, records=()):
     import yaml
     text = (ROOT / 'configuration.yaml').read_text().split('command_line:\n', 1)[1].split('\n# Archive', 1)[0]
     command = yaml.safe_load(text)[0]['sensor']['command']
-    rig.env.filters.update(to_json=lambda value: json.dumps(value, default=str),
+    rig.env.filters.update(to_json=lambda value: json.dumps(value),
                            base64_encode=lambda value: base64.b64encode(value.encode()).decode())
     argv = shlex.split(rig.render(command))
     assert argv[:5] == ['python3', '/config/tools/seasonal_model.py', '--history-root', '/config', '--payload']

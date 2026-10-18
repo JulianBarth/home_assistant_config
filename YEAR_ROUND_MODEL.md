@@ -168,20 +168,23 @@ charging improvements or winter accuracy are claimed from these results.
 The [Home Assistant command-line sensor](https://www.home-assistant.io/integrations/command_line/)
 runs the standard-library script every five minutes. Its base64 JSON input
 contains sensor data and helpers, with no credentials or arbitrary shell text.
+Forecast rows are reduced to the supported fields and datetime values become
+ISO-compatible strings before strict JSON serialization.
 It performs no hardware writes, recorder mutations, network requests or model
 file writes. Local replay of the available logs took approximately 0.12 seconds
 for one prediction; this is not a timing measurement on the HA device.
 
 The result exposes version, generation timestamp, forecast status, accepted
 history samples, learned hour groups and the seasonal calendar. Model data
-older than 15 minutes or dated in the future disables optional car lending and
+older than 15 minutes, dated in the future, or collected before valid SoC
+initialization disables optional car lending and
 extra discharge; the computed automatic target returns to the configured
 reserve. Manual charging and the existing independent reserve-recovery controls
 retain their existing permissions and safeguards.
 
 Validation completed locally:
 
-- **137 Python test methods pass**, including the actual rendered command payload
+- **139 Python test methods pass**, including the actual rendered command payload
   and the three production consumers, date rollover, all 12 months, all 366 days
   of a leap year, CET/CEST elapsed time, missing/stale/inconsistent forecast data,
   training leakage rejection, loan constraints and raw-input log serialization.
